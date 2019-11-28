@@ -46,7 +46,7 @@ reg [7:0] res;
 wire [7:0] divres;
 divide #(.BITS(4)) div(.divident(sw[7:4]), .divider(sw[3:0]), .quotient(divres[7:4]), .modulo(divres[3:0]));
 
-always @(sw, btn)
+always @*
 begin
 	if(btn[0]) begin
 		res[7:4] = sw[7:4] + sw[3:0];
