@@ -1,24 +1,28 @@
-'default_nettype none
+`default_nettype none
 
 module showDigit(
 	input wire [3: 0] digit,
 	output wire [6: 0] seg
 );
 
+reg [6: 0] seg1;
+
+assign seg = seg1;
+
 always @*
 begin
 	case (digit)
-		0: seg = 7'h40;
-		1: seg = 7'h79;
-		2: seg = 7'h24;
-		3: seg = 7'h30;
-		4: seg = 7'h19;
-		5: seg = 7'h12;
-		6: seg = 7'h02;
-		7: seg = 7'h78;
-		8: seg = 7'h00;
-		9: seg = 7'h10;
-		default: seg = 7'b1111111;
+		0: seg1 = 7'h40;
+		1: seg1 = 7'h79;
+		2: seg1 = 7'h24;
+		3: seg1 = 7'h30;
+		4: seg1 = 7'h19;
+		5: seg1 = 7'h12;
+		6: seg1 = 7'h02;
+		7: seg1 = 7'h78;
+		8: seg1 = 7'h00;
+		9: seg1 = 7'h10;
+		default: seg1 = 7'b1111111;
 	endcase
 end
 
@@ -28,16 +32,16 @@ endmodule
 module display(
 	input wire [15: 0] digits,
 	input wire clk,
-	output wire [3: 0] an,
+	output reg [3: 0] an,
 	output wire [6: 0] seg
 );
 
-localparam S_LOAD = 2'h0
-localparam S_DISPLAY = 2'h1
-localparam S_DISCHARGE = 2'h2
+localparam S_LOAD = 2'h0;
+localparam S_DISPLAY = 2'h1;
+localparam S_DISCHARGE = 2'h2;
 
 reg [1: 0] state = S_LOAD;
-reg [3: 0] digit = 1;
+reg [3: 0] digit = 4'h1;
 reg [15: 0] cnt = 0;
 
 always @(posedge clk)
@@ -57,9 +61,9 @@ begin
 	end
 end
 
-wire [3: 0] cur_digit;
+reg [3: 0] cur_digit;
 
-showDigit digit(.digit(cur_digit), .seg(seg));
+showDigit digidigi(.digit(cur_digit), .seg(seg));
 
 always @*
 begin
@@ -67,13 +71,13 @@ begin
 		S_LOAD:
 			an = 4'hf;
 		S_DISPLAY:
-			an = !digit;
+			an = ~digit;
 		S_DISCHARGE:
 			an = 4'hf;
 	endcase
 	if(digit & 4'h1) cur_digit = digits[3: 0];
 	else if(digit & 4'h2) cur_digit = digits[7: 4];
-	else if(digit & 4'h3) cur_digit = digits[11: 8];
+	else if(digit & 4'h4) cur_digit = digits[11: 8];
 	else cur_digit = digits[15: 12];
 end
 
@@ -86,7 +90,7 @@ module stopwatch(
 	input wire uclk,
 	output wire [3: 0] an,
 	output wire [6: 0] seg,
-	output wire [7: 0] led
+	output wire [2: 0] led
 );
 
 localparam S_STOP = 0;
@@ -104,7 +108,7 @@ wire clk;
 reg [31:0] cnt = 0;
 reg [15:0] digits;
 
-BUFGMUX moj_bufor_globalny(.I0(mclk), .I1(uclk), .S(sw[7]), .O(clk));
+BUFGMUX moj_bufor_globalny(.I0(mclk), .I1(uclk), .S(sw2[7]), .O(clk));
 
 display disp(.digits(digits), .clk(clk), .an(an), .seg(seg));
 
@@ -115,33 +119,42 @@ begin
 	sw1 <= sw;
 	sw2 <= sw1;
 	case (state)
-		S_INITIAL:
+		S_INITIAL: begin
 			digits <= 0;
 			cnt <= 0;
+		end
 		S_COUNT_UP:
-			if(cnt < 2 ** sw2[4:0]) begin
+			if(cnt < 32'h2 ** sw2[4:0]) begin
 				cnt <= cnt + 1;
 			end else begin
 				cnt <= 0;
 				if(digits[3:0] == 9) begin
+					digits[3:0] <= 0;
 					if(digits[7:4] == 9) begin
+						digits[7:4] <= 0;
 						if(digits[11: 8] == 9) begin
+							digits[11: 8] <= 0;
 							if(digits[15: 12] == 9) begin
+								digits[15: 0] <= 16'h9999;
 								state <= S_STOP_BOUND;
-							end
+							end else digits[15: 12] <= digits[15: 12] + 1;
 						end else digits[11: 8] <= digits[11:8] + 1;
 					end else digits[7:4] <= digits[7:4] + 1;
 				end else digits[3:0] <= digits[3:0] + 1;
 			end
 		S_COUNT_DOWN:
-			if(cnt < 2 ** sw2[4:0]) begin
+			if(cnt < 32'h2 ** sw2[4:0]) begin
 				cnt <= cnt + 1;
 			end else begin
 				cnt <= 0;
 				if(digits[3:0] == 0) begin
+					digits[3:0] <= 9;
 					if(digits[7:4] == 0) begin
+						digits[7:4] <= 9;
 						if(digits[11: 8] == 0) begin
+							digits[11: 8] <= 9;
 							if(digits[15: 12] == 0) begin
+								digits[15: 0] <= 0;
 								state <= S_STOP_BOUND;
 							end else digits[15: 12] <= digits[15: 12] - 1;
 						end else digits[11: 8] <= digits[11:8] - 1;
@@ -149,10 +162,10 @@ begin
 				end else digits[3:0] <= digits[3:0] - 1;
 			end
 	endcase
-	if(btn[0]) state <= S_COUNT_DOWN;
-	else if(btn[1]) state <= S_COUNT_UP;
-	else if(btn[2]) state <= S_STOP;
-	else if(btn[3]) state <= S_INITIAL;
+	if(btn2[0]) state <= S_COUNT_DOWN;
+	else if(btn2[1]) state <= S_COUNT_UP;
+	else if(btn2[2]) state <= S_STOP;
+	else if(btn2[3]) state <= S_INITIAL;
 end
 
 assign led[0] = state == S_COUNT_DOWN;
