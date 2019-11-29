@@ -1,8 +1,8 @@
 'default_nettype none
 
 module showDigit(
-	input wire [3: 0] digit;
-	output wire [6: 0] seg;
+	input wire [3: 0] digit,
+	output wire [6: 0] seg
 );
 
 always @*
@@ -26,10 +26,10 @@ endmodule
 
 
 module display(
-	input wire [15: 0] digits;
-	input wire clk;
-	output wire [3: 0] an;
-	output wire [6: 0] seg;
+	input wire [15: 0] digits,
+	input wire clk,
+	output wire [3: 0] an,
+	output wire [6: 0] seg
 );
 
 localparam S_LOAD = 2'h0
@@ -76,5 +76,87 @@ begin
 	else if(digit & 4'h3) cur_digit = digits[11: 8];
 	else cur_digit = digits[15: 12];
 end
+
+endmodule
+
+module stopwatch(
+	input wire [3: 0] btn,
+	input wire [7: 0] sw,
+	input wire mclk,
+	input wire uclk,
+	output wire [3: 0] an,
+	output wire [6: 0] seg,
+	output wire [7: 0] led
+);
+
+localparam S_STOP = 0;
+localparam S_STOP_BOUND = 1;
+localparam S_COUNT_UP = 2;
+localparam S_COUNT_DOWN = 3;
+localparam S_INITIAL = 4;
+
+reg [3: 0] btn1 = 0;
+reg [3: 0] btn2 = 0;
+reg [7: 0] sw1 = 0;
+reg [7: 0] sw2 = 0;
+reg [2:0] state = S_INITIAL;
+wire clk;
+reg [31:0] cnt = 0;
+reg [15:0] digits;
+
+BUFGMUX moj_bufor_globalny(.I0(mclk), .I1(uclk), .S(sw[7]), .O(clk));
+
+display disp(.digits(digits), .clk(clk), .an(an), .seg(seg));
+
+always @(posedge clk)
+begin
+	btn1 <= btn;
+	btn2 <= btn1;
+	sw1 <= sw;
+	sw2 <= sw1;
+	case (state)
+		S_INITIAL:
+			digits <= 0;
+			cnt <= 0;
+		S_COUNT_UP:
+			if(cnt < 2 ** sw2[4:0]) begin
+				cnt <= cnt + 1;
+			end else begin
+				cnt <= 0;
+				if(digits[3:0] == 9) begin
+					if(digits[7:4] == 9) begin
+						if(digits[11: 8] == 9) begin
+							if(digits[15: 12] == 9) begin
+								state <= S_STOP_BOUND;
+							end
+						end else digits[11: 8] <= digits[11:8] + 1;
+					end else digits[7:4] <= digits[7:4] + 1;
+				end else digits[3:0] <= digits[3:0] + 1;
+			end
+		S_COUNT_DOWN:
+			if(cnt < 2 ** sw2[4:0]) begin
+				cnt <= cnt + 1;
+			end else begin
+				cnt <= 0;
+				if(digits[3:0] == 0) begin
+					if(digits[7:4] == 0) begin
+						if(digits[11: 8] == 0) begin
+							if(digits[15: 12] == 0) begin
+								state <= S_STOP_BOUND;
+							end else digits[15: 12] <= digits[15: 12] - 1;
+						end else digits[11: 8] <= digits[11:8] - 1;
+					end else digits[7:4] <= digits[7:4] - 1;
+				end else digits[3:0] <= digits[3:0] - 1;
+			end
+	endcase
+	if(btn[0]) state <= S_COUNT_DOWN;
+	else if(btn[1]) state <= S_COUNT_UP;
+	else if(btn[2]) state <= S_STOP;
+	else if(btn[3]) state <= S_INITIAL;
+end
+
+assign led[0] = state == S_COUNT_DOWN;
+assign led[1] = state == S_COUNT_UP;
+assign led[2] = state == S_STOP_BOUND;
 
 endmodule
