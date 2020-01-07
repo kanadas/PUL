@@ -57,7 +57,6 @@ begin
 			state <= S_DISCHARGE;
 		end
 		cnt <= cnt + 1;
-		digit <= digit;
 	end
 end
 
@@ -124,7 +123,7 @@ begin
 			cnt <= 0;
 		end
 		S_COUNT_UP:
-			if(cnt < 32'h2 ** sw2[4:0]) begin
+			if(cnt < 32'h1 << sw2[4:0]) begin
 				cnt <= cnt + 1;
 			end else begin
 				cnt <= 0;
