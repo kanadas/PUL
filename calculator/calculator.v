@@ -10,6 +10,8 @@ reg [6: 0] seg1;
 
 assign seg = seg1;
 
+//TODO -5 / 2 nie ustawia bitu znaku
+
 always @*
 begin
 	if (is_digit) begin
@@ -90,100 +92,149 @@ end
 
 endmodule
 
-module uns_divide(divident, divider, quotient, modulo);
-//TODO zrobić to w wielu cyklach
-parameter BITS = 4;
+module div1(divident, divider, bitidx, res, rem);
 
-input wire [BITS - 1: 0] divident;
-input wire [BITS - 1: 0] divider;
-output wire [BITS - 1: 0] quotient;
-output wire [BITS - 1: 0] modulo;
+parameter BITS = 32;
 
-reg [BITS - 1: 0] tmp;
-reg [BITS - 1: 0] res;
-reg [2*(BITS - 1): 0] sub;
-integer i;
+input wire [BITS-1: 0] divident;
+input wire [BITS-1: 0] divider;
+input wire [BITS - 1 : 0] bitidx;
+output reg res;
+output reg [BITS-1: 0] rem;
 
 always @*
 begin
-	tmp = divident;
-	sub = {BITS-1'b0, divider} << BITS-1;
-	for (i = BITS - 1; i >= 0; i = i - 1) begin :div_for
-		if(sub <= tmp) begin
-			res[i] = 1;
-			tmp = tmp - sub;
-		end else begin
-			res[i] = 0;
-		end
-		sub = sub >> 1;
+	if(divident >= (divider << bitidx)) begin
+		res = 1;
+		rem = divident - (divider << bitidx);
+	end else begin
+		res = 0;
+		rem = divident;
 	end
 end
 
-assign modulo = tmp;
-assign quotient = res;
-
 endmodule
 
-module divide(divident, divider, quotient, modulo);
-parameter BITS = 4;
+module uns_divide(divident, divider, quotient, modulo, input_vld, output_vld, clk);
+parameter BITS = 32;
 
 input wire [BITS - 1: 0] divident;
 input wire [BITS - 1: 0] divider;
 output wire [BITS - 1: 0] quotient;
 output wire [BITS - 1: 0] modulo;
+input wire input_vld;
+output wire output_vld;
+input wire clk;
+
+reg [BITS - 1: 0] bitidx = 0;
+reg active = 0;
+reg [BITS - 1: 0] tmp_divt;
+reg [BITS - 1: 0] tmp_res;
+
+assign modulo = tmp_divt;
+assign quotient = tmp_res;
+assign output_vld = !active;
+
+wire q1;
+wire [BITS - 1: 0] out;
+
+div1 #(.BITS(BITS)) dzielacz(.divident(tmp_divt), .divider(divider), .bitidx(bitidx), .res(q1), .rem(out));
+always @(posedge clk)
+begin
+	if(!active) begin
+		if(input_vld) begin
+			tmp_divt <= divident;
+			tmp_res <= 0;
+			active <= 1;
+			bitidx <= BITS - 1;
+		end
+	end else begin
+		tmp_divt <= out;
+		tmp_res[bitidx] <= q1;
+		if(bitidx == 0)
+			active <= 0;
+		bitidx <= bitidx - 1;
+	end
+end
+
+endmodule
+
+module divide(divident, divider, quotient, modulo, input_vld, output_vld, clk);
+parameter BITS = 32;
+
+input wire [BITS - 1: 0] divident;
+input wire [BITS - 1: 0] divider;
+output reg [BITS - 1: 0] quotient;
+output reg [BITS - 1: 0] modulo;
+input wire input_vld;
+output wire output_vld;
+input wire clk;
 
 reg [BITS - 1: 0] tdivt;
 reg [BITS - 1: 0] tdivr;
 wire [BITS - 1: 0] tquot;
-reg [BITS - 1: 0] tquot2;
-reg [BITS - 1: 0] tquot3;
+//reg [BITS - 1: 0] tquot2;
 wire [BITS - 1: 0] tmod;
-reg [BITS - 1: 0] tmod2;
+//reg [BITS - 1: 0] tmod2;
+reg tinvld;
+wire toutvld;
+reg active = 0;
+reg divtsgn;
+reg divrsgn;
 
-always @*
+assign output_vld = !active;
+
+always @(posedge clk)
 begin
-	if(divider[BITS - 1]) begin
-		tdivr = (~divider) + 1;	//*(-1)
-		tquot2 = (~tquot) + 1;
-	end else begin
-		tdivr = divider;
-		tquot2 = tquot;
-	end
-	if(divident[BITS - 1]) begin
-		tdivt = (~divident) + 1;
-		if(tmod == 0) begin
-			tquot3 = (~tquot2) + 1;
-			tmod2 = tmod;
-		end else begin
-			tquot3 = (~tquot2);
-			tmod2 = tdivr - tmod;
+	if(!active) begin
+		if(input_vld) begin
+			active <= 1;
+			tinvld <= 1;
+			if(divider[BITS - 1]) begin
+				tdivr <= (~divider) + 1;	//*(-1)
+				divrsgn <= 1;
+			end else begin
+				tdivr <= divider;
+				divrsgn <= 0;
+			end
+			if(divident[BITS - 1]) begin
+				tdivt <= (~divident) + 1;
+				divtsgn <= 1;
+			end else begin
+				tdivt <= divident;
+				divtsgn <= 0;
+			end
 		end
 	end else begin
-		tdivt = divident;
-		tquot3 = tquot2;
-		tmod2 = tmod;
+		tinvld <= 0;
+		if(!tinvld && toutvld) begin
+			active <= 0;
+			if(!divtsgn || tmod == 0) begin
+				if({0,divtsgn} + {0,divrsgn} == 1)
+					quotient <= (~tquot) + 1;
+				else quotient <= tquot;
+				modulo <= tmod;
+			end else begin
+				if({0,divtsgn} + {0,divrsgn} == 1)
+					quotient <= (~tquot);
+				else quotient <= tquot - 1;
+				modulo <= tdivr - tmod;
+			end
+		end
 	end
-/*   if(divider[BITS - 1])
-	   tdivr = (~divider) + 1;
-   else
-	   tdivr = divider
-   if(divident[BITS - 1])
-	   tdivt = (~divident) + 1;
-	else
-		tdivit = divident;
-   if(divider[BITS - 1] && divident[BITS - 1])
-	   if(tmod == 0) begin
-			tquot2 = tquot;
-			tmod2 = tmod;
-		end else begin
-			tquot2 = tquot - 1;
-*/
 end
 
-assign quotient = tquot3;
-assign modulo = tmod2;
+//assign quotient = tquot2;
+//assign modulo = tmod2;
 
-uns_divide #(.BITS(BITS)) udiv(.divident(tdivt), .divider(tdivr), .quotient(tquot), .modulo(tmod));
+uns_divide #(.BITS(BITS)) udiv(
+	.divident(tdivt),
+	.divider(tdivr),
+	.quotient(tquot),
+	.modulo(tmod),
+	.input_vld(tinvld),
+	.output_vld(toutvld),
+	.clk(clk));
 
 endmodule
 
@@ -196,9 +247,10 @@ module calculator (
 	output wire [7:0] led
 );
 
-localparam SPUSH = 2'b00;
-localparam SPOP = 2'b01;
-localparam SINSTR = 2'b10;
+localparam SPUSH = 3'b000;
+localparam SPOP = 3'b001;
+localparam SINSTR = 3'b010;
+localparam WAITDIV = 3'b100;
 
 reg [3:0] btn1 = 0;
 reg [3:0] btn2 = 0;
@@ -216,18 +268,23 @@ wire [31:0] mod;
 reg signed [31:0] top;
 reg signed [31:0] top2;
 reg [31:0] push;
-reg [1:0] state = SINSTR;
-//reg [31:0] ram_in;
-//reg [31:0] ram_out;
-//reg ram_write;
-//reg ram_read;
+reg [2:0] state = SINSTR;
+wire div_done;
+reg do_div;
+reg res_is_div;
 
 assign not_empty = len > 0;
 
 display disp(.digits(disp_num), .is_number(not_empty), .clk(uclk), .an(an), .seg(seg));
 
-//TODO with 32 bits doesn't synthesize
-divide #(.BITS(4)) div(.divident(top2), .divider(top), .quotient(quot), .modulo(mod));
+divide #(.BITS(32)) div(
+	.divident(top2),
+	.divider(top),
+	.quotient(quot),
+	.modulo(mod),
+	.input_vld(do_div),
+	.output_vld(div_done),
+	.clk(uclk));
 
 always @(posedge uclk)
 begin
@@ -239,23 +296,26 @@ begin
 	case (state)
 		SPUSH: begin
 			stack[shead + 1] <= push;
-			//ram_in <= push;
-			//ram_write <= 1;
-			//ram_read <= 0;
 			shead <= shead + 1;
 			state <= SINSTR;
 		end
 		SPOP: begin
 			top2 <= stack[shead];
-			//top2 <= ram_out;
-			//ram_read <= 1;
-			//ram_write <= 0;
 			shead <= shead - 1;
 			state <= SINSTR;
 		end
+		WAITDIV: begin
+			do_div <= 0;
+			if(!do_div && div_done) begin
+				if(shead > 0)
+					state <= SPOP;
+				else state <= SINSTR;
+				len <= len - 1;
+				if(res_is_div) top <= quot;
+				else top <= mod;
+			end
+		end
 		SINSTR: begin
-			//ram_read <= 0;
-			//ram_write <= 0;
 			if(btn3[3] && btn3[0]) begin
 				len <= 0;
 				error <= 0;
@@ -275,7 +335,7 @@ begin
 					error <= 0;
 				end else error <= 1;
 			end else if(btn3[3] && !btn2[3]) begin
-				case(sw[2:0])
+				case(sw2[2:0])
 					3'b000:
 						if(len > 1) begin
 							top <= top2 + top;
@@ -302,18 +362,16 @@ begin
 						end else error <= 1;
 					3'b011:
 						if(len > 1 && top != 0) begin
-							top <= quot;
-							if(shead > 0)
-								state <= SPOP;
-							len <= len - 1;
+							state <= WAITDIV;
+							do_div <= 1;
+							res_is_div <= 1;
 							error <= 0;
 						end else error <= 1;
 					3'b100:
 						if(len > 1 && top != 0) begin
-							top <= mod;
-							if(shead > 0)
-								state <= SPOP;
-							len <= len - 1;
+							state <= WAITDIV;
+							do_div <= 1;
+							res_is_div <= 0;
 							error <= 0;
 						end else error <= 1;
 					3'b101:
