@@ -138,7 +138,7 @@ assign output_vld = !active;
 wire q1;
 wire [BITS - 1: 0] out;
 
-div1 #(.BITS(BITS)) dzielacz(.divident(tmp_divt), .divider(divider), .bitidx(bitidx), .res(q1), .rem(out));
+div1 #(.BITS(2*BITS)) dzielacz(.divident(tmp_divt), .divider(divider), .bitidx(bitidx), .res(q1), .rem(out));
 always @(posedge clk)
 begin
 	if(!active) begin
