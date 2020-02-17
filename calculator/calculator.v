@@ -10,8 +10,6 @@ reg [6: 0] seg1;
 
 assign seg = seg1;
 
-//TODO -5 / 2 nie ustawia bitu znaku
-
 always @*
 begin
 	if (is_digit) begin
