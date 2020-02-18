@@ -4,9 +4,9 @@ module display_vga (
 		    input wire 	      clk,
 		    output wire       HSYNC,
 		    output wire       VSYNC,
-		    output reg [2:0]  VGAR,
-		    output reg [2:0]  VGAG,
-		    output reg [2:1]  VGAB,
+		    output wire [2:0] VGAR,
+		    output wire [2:0] VGAG,
+		    output wire [2:1] VGAB,
 		    input wire 	      pixel,
 		    output wire       read,
 		    output wire [9:0] read_h,
@@ -36,6 +36,8 @@ module display_vga (
     assign VGAR = (read1 && pixel) ? 7 : 0;
     assign VGAG = (read1 && pixel) ? 7 : 0;
     assign VGAB = (read1 && pixel) ? 3 : 0;
+    assign read_h = pos_h < ACTIVE_H ? pos_h : 0;
+    assign read_v = pos_v < ACTIVE_V ? pos_v : 0;
 
     always @(posedge clk) begin
 	next_pxl <= !next_pxl;
@@ -48,17 +50,17 @@ module display_vga (
 	    end else pos_h  <= pos_h + 1;
 	end
 	
-	read1 <= read;	
+	read1 <= (pos_h < ACTIVE_H) && (pos_v < ACTIVE_V);
     end // always @ (posedge clk)
 
-endmodule; // display_vga
+endmodule // display_vga
 
 module blockram(
 		input wire 	 clk,
 		input wire 	 do_read,
 		input wire [8:0] read_x,
 		input wire [7:0] read_y,
-		output reg 	 read_res,
+		output wire 	 read_res,
 		input wire 	 do_write,
 		input wire [8:0] write_x,
 		input wire [7:0] write_y,
@@ -67,37 +69,125 @@ module blockram(
     
     localparam BR_SIZE = 1024*16 - 1;
     
-    reg ram1 [BR_SIZE:0];
-    reg ram2 [BR_SIZE:0];
-    reg ram3 [BR_SIZE:0];
-    reg ram4 [BR_SIZE:0];
+//    reg ram1 [BR_SIZE:0];
+//    reg ram2 [BR_SIZE:0];
+//    reg ram3 [BR_SIZE:0];
+//    reg ram4 [BR_SIZE:0];
+
+//    reg write_bit;
+//    reg [0:0] read_bit;
+  
+    wire [3:0] read_bits;
 
     wire [13:0] read_addr;
     wire [13:0] write_addr;
-    wire [2:0] 	read_ram;
-    wire [2:0] 	write_ram;
+    wire [3:0] 	read_ram;
+    wire [3:0] 	write_ram;
 
-    assign read_addr = (read_x >> 2) + (read_y << 7);
-    assign read_ram = {~do_read, read_x[1:0]};
-    assign write_addr = (write_x >> 2) + (write_y << 7);
-    assign write_ram = {~do_write, write_x[1:0]};
+    assign read_addr = (read_x + read_y * 320) >> 2;
+    assign read_ram[0] = read_x[1:0] == 0 && do_read;
+    assign read_ram[1] = read_x[1:0] == 1 && do_read;
+    assign read_ram[2] = read_x[1:0] == 2 && do_read;
+    assign read_ram[3] = read_x[1:0] == 3 && do_read;
+    assign write_addr = (write_x + write_y * 320) >> 2;
+    assign write_ram[0] = write_x[1:0] == 0 && do_write;
+    assign write_ram[1] = write_x[1:0] == 1 && do_write;
+    assign write_ram[2] = write_x[1:0] == 2 && do_write;
+    assign write_ram[3] = write_x[1:0] == 3 && do_write;
+    assign read_res = read_ram[0] ? read_bits[0] : (read_ram[1] ? read_bits[1] : 
+						    (read_ram[2] ? read_bits[2] : read_bits[3]));
+
+/*    always @(posedge clk) begin
+	case (read_ram)
+	  0 : read_bit <= ram1[read_addr];
+	  1 : read_bit <= ram2[read_addr];
+	  2 : read_bit <= ram3[read_addr];
+	  3 : read_bit <= ram4[read_addr];
+	endcase // case (read_ram)
+	read_res <= read_bit;
+    end
 
     always @(posedge clk) begin
-	case (read_ram)
-	  0 : read_res <= ram1[read_addr];
-	  1 : read_res <= ram2[read_addr];
-	  2 : read_res <= ram3[read_addr];
-	  3 : read_res <= ram4[read_addr];
-	endcase // case (read_ram)
+	write_bit <= write; //TODO
 	case (write_ram)
-	  0: ram1[write_addr] <= write;
-	  1: ram2[write_addr] <= write;
-	  2: ram3[write_addr] <= write;
-	  3: ram4[write_addr] <= write;
+	  0: ram1[write_addr] <= write_bit;
+	  1: ram2[write_addr] <= write_bit;
+	  2: ram3[write_addr] <= write_bit;
+	  3: ram4[write_addr] <= write_bit;
 	endcase // case (write_ram)
     end // always @ (posedge clk)
+*/
 
-endmodule; // blockram
+//    assign read_res = read_bit;
+
+    RAMB16_S1_S1 RAMB16_S1_S1_inst1(.DOA(read_bits[0]),//PortA1-bitDataOutput
+				    //.DOB(DOB),//PortB1-bitDataOutput
+				    .ADDRA(read_addr),//PortA14-bitAddressInput
+				    .ADDRB(write_addr),//PortB14-bitAddressInput
+				    .CLKA(clk),//PortAClock
+				    .CLKB(clk),//PortBClock
+				    //.DIA(DIA),//PortA1-bitDataInput
+				    .DIB(write),//PortB1-bitDataInput
+				    .ENA(read_ram[0]),//PortARAMEnableInput
+				    .ENB(write_ram[0]),//PortBRAMEnableInput
+				    .SSRA(0),//PortASynchronousSet/ResetInput
+				    .SSRB(0),//PortBSynchronousSet/ResetInput
+				    .WEA(0),//PortAWriteEnableInput
+				    .WEB(write_ram[0])//PortBWriteEnableInput
+				    );
+
+    
+    RAMB16_S1_S1 RAMB16_S1_S1_inst2(.DOA(read_bits[1]),//PortA1-bitDataOutput
+				    //.DOB(DOB),//PortB1-bitDataOutput
+				    .ADDRA(read_addr),//PortA14-bitAddressInput
+				    .ADDRB(write_addr),//PortB14-bitAddressInput
+				    .CLKA(clk),//PortAClock
+				    .CLKB(clk),//PortBClock
+				    //.DIA(DIA),//PortA1-bitDataInput
+				    .DIB(write),//PortB1-bitDataInput
+				    .ENA(read_ram[1]),//PortARAMEnableInput
+				    .ENB(write_ram[1]),//PortBRAMEnableInput
+				    .SSRA(0),//PortASynchronousSet/ResetInput
+				    .SSRB(0),//PortBSynchronousSet/ResetInput
+				    .WEA(0),//PortAWriteEnableInput
+				    .WEB(write_ram[1])//PortBWriteEnableInput
+				    );
+
+    
+    RAMB16_S1_S1 RAMB16_S1_S1_inst3(.DOA(read_bits[2]),//PortA1-bitDataOutput
+				    //.DOB(DOB),//PortB1-bitDataOutput
+				    .ADDRA(read_addr),//PortA14-bitAddressInput
+				    .ADDRB(write_addr),//PortB14-bitAddressInput
+				    .CLKA(clk),//PortAClock
+				    .CLKB(clk),//PortBClock
+				    //.DIA(DIA),//PortA1-bitDataInput
+				    .DIB(write),//PortB1-bitDataInput
+				    .ENA(read_ram[2]),//PortARAMEnableInput
+				    .ENB(write_ram[2]),//PortBRAMEnableInput
+				    .SSRA(0),//PortASynchronousSet/ResetInput
+				    .SSRB(0),//PortBSynchronousSet/ResetInput
+				    .WEA(0),//PortAWriteEnableInput
+				    .WEB(write_ram[2])//PortBWriteEnableInput
+				    );
+
+    
+    RAMB16_S1_S1 RAMB16_S1_S1_inst4(.DOA(read_bits[3]),//PortA1-bitDataOutput
+				    //.DOB(DOB),//PortB1-bitDataOutput
+				    .ADDRA(read_addr),//PortA14-bitAddressInput
+				    .ADDRB(write_addr),//PortB14-bitAddressInput
+				    .CLKA(clk),//PortAClock
+				    .CLKB(clk),//PortBClock
+				    //.DIA(DIA),//PortA1-bitDataInput
+				    .DIB(write),//PortB1-bitDataInput
+				    .ENA(read_ram[3]),//PortARAMEnableInput
+				    .ENB(write_ram[3]),//PortBRAMEnableInput
+				    .SSRA(0),//PortASynchronousSet/ResetInput
+				    .SSRB(0),//PortBSynchronousSet/ResetInput
+				    .WEA(0),//PortAWriteEnableInput
+				    .WEB(write_ram[3])//PortBWriteEnableInput
+				    );
+
+endmodule // blockram
 
 module game(
 	    input wire 	      clk,
@@ -120,6 +210,7 @@ module game(
     localparam STATE_REDRAW = 3;
     localparam STATE_MOVE_ALIENS = 4;
     localparam STATE_GAME_OVER = 5;
+    localparam STATE_TEST_SIMULATION = 6;
 
     localparam SPRITE_BIG_ALIEN = 0;
     localparam SPRITE_MID_ALIEN = 1;
@@ -130,14 +221,14 @@ module game(
     localparam DIRECTION_DOWN = 2;
     
     reg [2:0]  state = STATE_INIT;
-    reg        is_init = 1;
+    reg        init_finished = 1;
    
-    reg [8:0]  inviders_x [54:0];
-    reg [7:0]  inviders_y [54:0];
-    reg        killed_inviders [54:0];
+    reg [8:0]  invaders_x [54:0];
+    reg [7:0]  invaders_y [54:0];
+    reg        killed_invaders [54:0];
     reg [5:0]  speed = 0;
     
-    reg [5:0]  nxt_move <= MAX_MOVE_DELAY;
+    reg [5:0]  nxt_move = MAX_MOVE_DELAY;
     reg [5:0]  cur_invader = 0;
     reg [1:0]  cur_sprite = SPRITE_SMALL_ALIEN;
     reg [8:0]  sprite_x = FIRST_COLUMN + 16*11;
@@ -145,7 +236,9 @@ module game(
     reg [3:0]  draw_x = 0;
     reg [3:0]  draw_y = 0;
     reg [1:0]  moving_direction = DIRECTION_RIGHT;
-    reg [1:0]  nxt_mov_dir; 
+    reg [1:0]  nxt_mov_dir;
+
+    reg [5:0]  next_kill = 7;
 
     assign do_write = state == STATE_DRAW_SPRITE;
     assign write_x = sprite_x + draw_x;
@@ -158,20 +251,20 @@ module game(
 		  if(sprite_x + 16 >= FIRST_COLUMN + 16*11) begin
 		      sprite_x <= FIRST_COLUMN;
 		      sprite_y <= sprite_y + 16;
-		      inviders_x[cur_invider] <= FIRST_COLUMN;
-		      inviders_y[cur_invider] <= sprite_y + 16;
-		      if(cur_invider >= 33) cur_sprite <= SPRITE_BIG_ALIEN;
-		      else if(cur_invider >= 11) cur_sprite <= SPRITE_MID_ALIEN;
+		      invaders_x[cur_invader] <= FIRST_COLUMN;
+		      invaders_y[cur_invader] <= sprite_y + 16;
+		      if(cur_invader >= 33) cur_sprite <= SPRITE_BIG_ALIEN;
+		      else if(cur_invader >= 11) cur_sprite <= SPRITE_MID_ALIEN;
 		  end else begin
 		      sprite_x <= sprite_x + 16;
-		      inviders_x[cur_invider] <= sprite_x + 16;
-		      inviders_y[cur_invider] <= sprite_y;
+		      invaders_x[cur_invader] <= sprite_x + 16;
+		      invaders_y[cur_invader] <= sprite_y;
 		  end
-		  cur_invider <= cur_invider + 1;
+		  cur_invader <= cur_invader + 1;
 		  state <= STATE_DRAW_SPRITE;
 	      end else begin // if (cur_invader < 55)
 		  cur_invader <= 0;
-		  is_init <= 0;
+		  init_finished <= 0;
 		  state <= STATE_WAIT;
 	      end
 	  end // case: STATE_INIT
@@ -196,7 +289,7 @@ module game(
 		  draw_x <= 0;
 		  if(draw_y == 15) begin
 		      draw_y <= 0;
-		      if(is_init) state <= STATE_INIT;
+		      if(init_finished) state <= STATE_INIT;
 		      else state <= STATE_REDRAW;
 		  end else draw_y <= draw_y + 1;
 	      end else draw_x <= draw_x + 1;
@@ -206,14 +299,14 @@ module game(
 		  if(!killed_invaders[cur_invader]) begin
 		      sprite_x <= invaders_x[cur_invader];
 		      sprite_y <= invaders_y[cur_invader];
-		      if(cur_invider >= 33) cur_sprite <= SPRITE_BIG_ALIEN;
-		      else if(cur_invider >= 11) cur_sprite <= SPRITE_MID_ALIEN;
+		      if(cur_invader >= 33) cur_sprite <= SPRITE_BIG_ALIEN;
+		      else if(cur_invader >= 11) cur_sprite <= SPRITE_MID_ALIEN;
 		      else cur_sprite <= SPRITE_SMALL_ALIEN;
 		      state <= STATE_DRAW_SPRITE;
 		  end
-		  cur_invider <= cur_invider + 1;
+		  cur_invader <= cur_invader + 1;
 	      end else begin
-		  cur_invider <= 0;
+		  cur_invader <= 0;
 		  if(nxt_move == 0) begin
 		      nxt_move <= MAX_MOVE_DELAY - speed;
 		      state <= STATE_MOVE_ALIENS;
@@ -239,7 +332,7 @@ module game(
 		      end
 		      DIRECTION_DOWN: begin
 			  invaders_y[cur_invader] <= invaders_y[cur_invader] + 8;
-			  if(invaders_y[cur_invader] == LAST_COLUMN)
+			  if(invaders_y[cur_invader] == LAST_ROW)
 			    state <= STATE_GAME_OVER;
 		      end
 		    endcase // case (moving_direction)
@@ -247,7 +340,7 @@ module game(
 		  cur_invader <= cur_invader + 1;
 	      end else begin // if (cur_invader < 55)
 		  cur_invader <= 0;
-		  state <= STATE_WAIT;
+		  state <= STATE_TEST_SIMULATION;
 		  moving_direction <= nxt_mov_dir;
 		  if(nxt_mov_dir == DIRECTION_DOWN)
 		    nxt_mov_dir <= moving_direction == DIRECTION_RIGHT ? DIRECTION_LEFT 
@@ -256,21 +349,30 @@ module game(
 	  end // case: STATE_MOVE_ALIENS
 	  STATE_GAME_OVER: begin
 	  end
+	  STATE_TEST_SIMULATION: begin
+	      if(next_kill + 7 >= 55) next_kill <= next_kill - 48;
+	      else next_kill <= next_kill + 7;
+	      if(!killed_invaders[next_kill]) begin
+		  killed_invaders[next_kill] <= 1;
+		  speed <= speed + 1;
+	      end
+	      state <= STATE_WAIT;
+	  end
 	endcase // case (state)
     end // always @ (posedge clk)
 
 endmodule // game
 
-module space_inviders (
+module space_invaders (
 		       input wire 	 uclk,
-		       input wire [3:0]  btn,
-		       input wire [7:0]  sw,
-		       output wire [7:0] led,
-		       output reg 	 HSYNC,
-		       output reg 	 VSYNC,
-		       output reg [2:0]  VGAR,
-		       output reg [2:0]  VGAG,
-		       output reg [2:1]  VGAB
+		       //input wire [3:0]  btn,
+		       //input wire [7:0]  sw,
+		       //output wire [7:0] led,
+		       output wire 	 HSYNC,
+		       output wire 	 VSYNC,
+		       output wire [2:0] VGAR,
+		       output wire [2:0] VGAG,
+		       output wire [2:1] VGAB
 		       );
 
     wire clk;
@@ -327,4 +429,4 @@ module space_inviders (
 	    .write(write)
 	    );
 
-endmodule // space_inviders
+endmodule // space_invaders

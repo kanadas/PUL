@@ -1,0 +1,1 @@
+run -ifn space_invaders.prj -p xc3s100e-4-cp132 -top space_invaders -ofn space_invaders -use_new_parser yes
