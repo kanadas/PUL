@@ -96,7 +96,7 @@ endmodule // display_vga
     assign write_ram[3] = write_x[1:0] == 3 && do_write;
     assign read_res = read_ram[0] ? read_bits[0] : (read_ram[1] ? read_bits[1] : 
 						    (read_ram[2] ? read_bits[2] : read_bits[3]));
-
+*/
 /*    always @(posedge clk) begin
 	case (read_ram)
 	  0 : read_bit <= ram1[read_addr];
@@ -193,10 +193,10 @@ endmodule // blockram
 module game(
 	    input wire 	     clk,
 	    input wire 	     next_move,
-	    input wire 	     do_write,
+//	    input wire 	     do_write,
 	    input wire [8:0] write_x,
 	    input wire [7:0] write_y,
-	    output reg 	     write
+	    output wire      write
 	    );
 
     localparam MAX_MOVE_DELAY = 50;
@@ -206,13 +206,13 @@ module game(
     localparam LAST_ROW = 180;
     
 //    localparam STATE_INIT = 0;
-    localparam STATE_WAIT = 1;
+    localparam STATE_WAIT = 0;
 //    localparam STATE_DRAW_SPRITE = 2;
 //    localparam STATE_REDRAW = 3;
-    localparam STATE_CHECK_COLLISIONS = 3;
-    localparam STATE_MOVE_ALIENS = 4;
-    localparam STATE_GAME_OVER = 5;
-    localparam STATE_TEST_SIMULATION = 6;
+    localparam STATE_CHECK_COLLISIONS = 1;
+    localparam STATE_MOVE_ALIENS = 2;
+    localparam STATE_GAME_OVER = 3;
+    localparam STATE_TEST_SIMULATION = 4;
 
     localparam SPRITE_BIG_ALIEN = 0;
     localparam SPRITE_MID_ALIEN = 1;
@@ -232,7 +232,7 @@ module game(
     reg [54:0]  killed_invaders = 0;
     reg [5:0]  speed = 0;
     
-    reg [5:0]  nxt_move = MAX_MOVE_DELAY;
+    reg [5:0]  move_cnt = MAX_MOVE_DELAY;
     reg [5:0]  cur_invader = 0;
     reg [8:0]  cur_invader_x;
     reg [7:0]  cur_invader_y;
@@ -251,28 +251,32 @@ module game(
     wire [4:0] write_alien_x;
     wire [3:0] write_alien_y;
     wire [3:0] write_sprite_x;
-    wire [3:0] wire_sprite_y;
+    wire [3:0] write_sprite_y;
+
+    reg        pixel;
 
     assign rel_write_x = write_x - first_invader_x;
     assign rel_write_y = write_y - first_invader_y;
     assign write_alien_x = rel_write_x >> 4;
     assign write_alien_y = rel_write_y >> 4;
     assign write_sprite_x = rel_write_x[3:0];
-    assign wirte_sprite_y = rel_write_y[3:0];
+    assign write_sprite_y = rel_write_y[3:0];
     
     always @* begin
-	if(write_x >= first_invader_x && wirte_x < first_invader_x + 16*11
+	if(write_x >= first_invader_x && write_x < first_invader_x + 16*11
 	   && write_y >= first_invader_y && write_y < first_invader_y + 16*5
 	   && !killed_invaders[write_alien_x + write_alien_y * 11]) begin
 	    //Read sprite pixel
-	    if(wirte_sprite_y < 8) write <= 0;
+	    if(write_sprite_y < 8) pixel = 0;
 	    else if(write_sprite_x < 8 ||
 		    (write_sprite_x < 11 && write_alien_y > 0) ||
 		    (write_sprite_x < 12 && write_alien_y > 2))
-	      write <= 1;
-	    else write <= 0;
-	end else write <= 0;
-    end
+	      pixel = 1;
+	    else pixel = 0;
+	end else pixel = 0;
+    end // always @ *
+
+    assign write = pixel;
     
     always @(posedge clk) begin
 	case (state)
@@ -299,7 +303,12 @@ module game(
 	      end
 	  end // case: STATE_INIT*/
 	  STATE_WAIT: 
-	    if(next_move) state <= STATE_MOVE_ALIENS;
+	    if(next_move) begin
+		if(move_cnt == 0) begin
+		    move_cnt <= MAX_MOVE_DELAY - speed;
+		    state <= STATE_MOVE_ALIENS;
+		end
+	    end
 /*	  STATE_DRAW_SPRITE: begin
 	      case(cur_sprite)
 		SPRITE_BIG_ALIEN: begin
@@ -429,11 +438,11 @@ module space_invaders (
 	     ) moj_dcm (
 			.CLKIN(uclk),
 			.CLKFX(clk),
-			.RST(0)
+			.RST(1'b0)
 			);
 
-    wire [8:0] read_h;
-    wire [7:0] read_v;
+    wire [9:0] read_h;
+    wire [8:0] read_v;
     wire       do_read;
     wire       read_res;
     wire       do_write;
@@ -441,7 +450,7 @@ module space_invaders (
     wire [7:0] write_y;
     wire       write;
     
-    blockram ram(
+    /*blockram ram(
 		.clk(clk),
 		.do_read(do_read),
 		.read_x(read_h >> 1),
@@ -451,7 +460,7 @@ module space_invaders (
 		.write_x(write_x),
 		.write_y(write_y),
 		.write(write)
-		);
+		);*/
     
     display_vga disp(
 		    .clk(clk),
@@ -466,13 +475,19 @@ module space_invaders (
 		    .read_v(read_v)
 		    );
 
+    reg        do_read1;
+    
+    always @(posedge clk) begin
+	do_read1 <= do_read;
+    end
+    
     game ggame(
 	    .clk(clk),
-	    .draw(~do_read),
-	    .do_write(do_write),
-	    .write_x(write_x),
-	    .write_y(write_y),
-	    .write(write)
+	    .next_move(~do_read & do_read1),
+//	    .do_write(do_read),
+	    .write_x(read_h >> 1),
+	    .write_y(read_v >> 1),
+	    .write(read_res)
 	    );
 
 endmodule // space_invaders
