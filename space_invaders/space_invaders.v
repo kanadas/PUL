@@ -55,7 +55,7 @@ module display_vga (
 
 endmodule // display_vga
 
-module blockram(
+/*module blockram(
 		input wire 	 clk,
 		input wire 	 do_read,
 		input wire [8:0] read_x,
@@ -119,7 +119,7 @@ module blockram(
 */
 
 //    assign read_res = read_bit;
-
+/*
     RAMB16_S1_S1 RAMB16_S1_S1_inst1(.DOA(read_bits[0]),//PortA1-bitDataOutput
 				    //.DOB(DOB),//PortB1-bitDataOutput
 				    .ADDRA(read_addr),//PortA14-bitAddressInput
@@ -188,14 +188,15 @@ module blockram(
 				    );
 
 endmodule // blockram
-
+*/
+ 
 module game(
-	    input wire 	      clk,
-	    input wire 	      draw,
-	    output wire       do_write,
-	    output wire [8:0] write_x,
-	    output wire [7:0] write_y,
-	    output reg 	      write
+	    input wire 	     clk,
+	    input wire 	     next_move,
+	    input wire 	     do_write,
+	    input wire [8:0] write_x,
+	    input wire [7:0] write_y,
+	    output reg 	     write
 	    );
 
     localparam MAX_MOVE_DELAY = 50;
@@ -204,10 +205,11 @@ module game(
     localparam LAST_COLUMN = 320 - 4;
     localparam LAST_ROW = 180;
     
-    localparam STATE_INIT = 0;
+//    localparam STATE_INIT = 0;
     localparam STATE_WAIT = 1;
-    localparam STATE_DRAW_SPRITE = 2;
-    localparam STATE_REDRAW = 3;
+//    localparam STATE_DRAW_SPRITE = 2;
+//    localparam STATE_REDRAW = 3;
+    localparam STATE_CHECK_COLLISIONS = 3;
     localparam STATE_MOVE_ALIENS = 4;
     localparam STATE_GAME_OVER = 5;
     localparam STATE_TEST_SIMULATION = 6;
@@ -220,33 +222,61 @@ module game(
     localparam DIRECTION_LEFT = 1;
     localparam DIRECTION_DOWN = 2;
     
-    reg [2:0]  state = STATE_INIT;
-    reg        init_finished = 1;
+    reg [2:0]  state = STATE_WAIT;
+//    reg        init_finished = 1;
    
-    reg [8:0]  invaders_x [54:0];
-    reg [7:0]  invaders_y [54:0];
-    reg        killed_invaders [54:0];
+//    reg [8:0]  invaders_x [54:0];
+//    reg [7:0]  invaders_y [54:0];
+    reg [8:0]  first_invader_x = FIRST_COLUMN;
+    reg [7:0]  first_invader_y = FIRST_ROW; 
+    reg [54:0]  killed_invaders = 0;
     reg [5:0]  speed = 0;
     
     reg [5:0]  nxt_move = MAX_MOVE_DELAY;
     reg [5:0]  cur_invader = 0;
-    reg [1:0]  cur_sprite = SPRITE_SMALL_ALIEN;
-    reg [8:0]  sprite_x = FIRST_COLUMN + 16*11;
-    reg [7:0]  sprite_y = FIRST_ROW - 16;
-    reg [3:0]  draw_x = 0;
-    reg [3:0]  draw_y = 0;
+    reg [8:0]  cur_invader_x;
+    reg [7:0]  cur_invader_y;
+//    reg [1:0]  cur_sprite = SPRITE_SMALL_ALIEN;
+//    reg [8:0]  sprite_x = FIRST_COLUMN + 16*11;
+//    reg [7:0]  sprite_y = FIRST_ROW - 16;
+//    reg [3:0]  draw_x = 0;
+//    reg [3:0]  draw_y = 0;
     reg [1:0]  moving_direction = DIRECTION_RIGHT;
-    reg [1:0]  nxt_mov_dir;
+    reg        updated_direction;
 
     reg [5:0]  next_kill = 7;
 
-    assign do_write = state == STATE_DRAW_SPRITE;
-    assign write_x = sprite_x + draw_x;
-    assign write_y = sprite_y + draw_y;
+    wire [8:0] rel_write_x;
+    wire [7:0] rel_write_y;
+    wire [4:0] write_alien_x;
+    wire [3:0] write_alien_y;
+    wire [3:0] write_sprite_x;
+    wire [3:0] wire_sprite_y;
+
+    assign rel_write_x = write_x - first_invader_x;
+    assign rel_write_y = write_y - first_invader_y;
+    assign write_alien_x = rel_write_x >> 4;
+    assign write_alien_y = rel_write_y >> 4;
+    assign write_sprite_x = rel_write_x[3:0];
+    assign wirte_sprite_y = rel_write_y[3:0];
+    
+    always @* begin
+	if(write_x >= first_invader_x && wirte_x < first_invader_x + 16*11
+	   && write_y >= first_invader_y && write_y < first_invader_y + 16*5
+	   && !killed_invaders[write_alien_x + write_alien_y * 11]) begin
+	    //Read sprite pixel
+	    if(wirte_sprite_y < 8) write <= 0;
+	    else if(write_sprite_x < 8 ||
+		    (write_sprite_x < 11 && write_alien_y > 0) ||
+		    (write_sprite_x < 12 && write_alien_y > 2))
+	      write <= 1;
+	    else write <= 0;
+	end else write <= 0;
+    end
     
     always @(posedge clk) begin
 	case (state)
-	  STATE_INIT : begin
+/*	  STATE_INIT : begin
 	      if(cur_invader < 55) begin
 		  if(sprite_x + 16 >= FIRST_COLUMN + 16*11) begin
 		      sprite_x <= FIRST_COLUMN;
@@ -267,10 +297,10 @@ module game(
 		  init_finished <= 0;
 		  state <= STATE_WAIT;
 	      end
-	  end // case: STATE_INIT
+	  end // case: STATE_INIT*/
 	  STATE_WAIT: 
-	    if(draw) state <= STATE_REDRAW;
-	  STATE_DRAW_SPRITE: begin
+	    if(next_move) state <= STATE_MOVE_ALIENS;
+/*	  STATE_DRAW_SPRITE: begin
 	      case(cur_sprite)
 		SPRITE_BIG_ALIEN: begin
 		    if(draw_x < 12 && draw_y >= 8) write <= 1;
@@ -315,38 +345,53 @@ module game(
 		      state <= STATE_WAIT;
 		  end
 	      end // else: !if(cur_invader < 55)
-	  end // case: STATE_REDRAW
+	  end // case: STATE_REDRAW*/
 	  STATE_MOVE_ALIENS: begin
+	      case(moving_direction)
+		DIRECTION_RIGHT: begin
+		    first_invader_x <= first_invader_x + 1;
+		end
+		DIRECTION_LEFT: begin
+		    first_invader_x <= first_invader_x - 1;
+		end
+		DIRECTION_DOWN: begin
+		    first_invader_y <= first_invader_y + 8;
+		end
+	      endcase // case (moving_direction)
+	      updated_direction <= 0;
+	      state <= STATE_CHECK_COLLISIONS;
+	  end // case: STATE_MOVE_ALIENS
+	  STATE_CHECK_COLLISIONS: begin
+	      if(cur_invader == 0) begin
+		  cur_invader_x <= first_invader_x;
+		  cur_invader_y <= first_invader_y;
+	      end
 	      if(cur_invader < 55) begin
 		  if(!killed_invaders[cur_invader]) begin
-		    case(moving_direction)
-		      DIRECTION_RIGHT: begin
-			  invaders_x[cur_invader] <= invaders_x[cur_invader] + 1;
-			  if(invaders_x[cur_invader] + 1 == LAST_COLUMN) 
-			    nxt_mov_dir <= DIRECTION_DOWN;
-		      end
-		      DIRECTION_LEFT: begin
-			  invaders_x[cur_invader] <= invaders_x[cur_invader] - 1;
-			  if(invaders_x[cur_invader] - 1 == FIRST_COLUMN)
-			    nxt_mov_dir <= DIRECTION_DOWN;
-		      end
-		      DIRECTION_DOWN: begin
-			  invaders_y[cur_invader] <= invaders_y[cur_invader] + 8;
-			  if(invaders_y[cur_invader] == LAST_ROW)
-			    state <= STATE_GAME_OVER;
-		      end
-		    endcase // case (moving_direction)
+		      //Collision with screen edges
+		      if(!updated_direction) begin
+			  if(cur_invader_x == FIRST_COLUMN 
+			     || cur_invader_x == LAST_COLUMN - 16) begin
+			      updated_direction <= 1;
+			      if(moving_direction == DIRECTION_DOWN)
+				if(cur_invader_x == FIRST_COLUMN)
+				  moving_direction <= DIRECTION_RIGHT;
+				else moving_direction <= DIRECTION_LEFT;
+			      else moving_direction <= DIRECTION_DOWN;
+			  end
+		      end // if (!updated_direction)
+		      if(cur_invader_y == LAST_ROW) state <= STATE_GAME_OVER;
 		  end
 		  cur_invader <= cur_invader + 1;
+		  if(cur_invader_x + 16 >= first_invader_x + 11*16) begin
+		      cur_invader_x <= first_invader_x;
+		      cur_invader_y <= cur_invader_y + 16;
+		  end else cur_invader_x <= cur_invader_x + 16;
 	      end else begin // if (cur_invader < 55)
 		  cur_invader <= 0;
 		  state <= STATE_TEST_SIMULATION;
-		  moving_direction <= nxt_mov_dir;
-		  if(nxt_mov_dir == DIRECTION_DOWN)
-		    nxt_mov_dir <= moving_direction == DIRECTION_RIGHT ? DIRECTION_LEFT 
-				   : DIRECTION_RIGHT;
- 	      end // else: !if(cur_invader < 55)
-	  end // case: STATE_MOVE_ALIENS
+ 	      end 	      
+	  end
 	  STATE_GAME_OVER: begin
 	  end
 	  STATE_TEST_SIMULATION: begin
@@ -356,7 +401,8 @@ module game(
 		  killed_invaders[next_kill] <= 1;
 		  speed <= speed + 1;
 	      end
-	      state <= STATE_WAIT;
+	      if(speed == 54 && !killed_invaders[next_kill]) state <= STATE_GAME_OVER;
+	      else state <= STATE_WAIT;
 	  end
 	endcase // case (state)
     end // always @ (posedge clk)
