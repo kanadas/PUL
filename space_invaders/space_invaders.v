@@ -312,7 +312,7 @@ module game(
 		if(move_cnt == 0) begin
 		    move_cnt <= MAX_MOVE_DELAY - speed;
 		    state <= STATE_MOVE_ALIENS;
-		end
+		end else move_cnt <= move_cnt - 1;
 	    end
 /*	  STATE_DRAW_SPRITE: begin
 	      case(cur_sprite)
