@@ -8,9 +8,9 @@ module display_vga (
 		    output wire [2:0] VGAG,
 		    output wire [2:1] VGAB,
 		    input wire 	      pixel,
-		    output wire       read,
 		    output wire [9:0] read_h,
-		    output wire [8:0] read_v
+		    output wire [8:0] read_v,
+		    output wire       next_frame
 		    );
 
     localparam ACTIVE_H =  640;
@@ -28,16 +28,15 @@ module display_vga (
     reg [9:0] pos_h = 0;
     reg [8:0] pos_v = 0;
     reg       next_pxl;
-    reg       read1;      
     
-    assign read = (pos_h < ACTIVE_H) && (pos_v < ACTIVE_V);
     assign HSYNC = (pos_h >= ACTIVE_H + FRONT_H) && (pos_h < ACTIVE_H + FRONT_H + SYNC_H);
     assign VSYNC = (pos_v >= ACTIVE_V + FRONT_V) && (pos_v < ACTIVE_V + FRONT_V + SYNC_V);
-    assign VGAR = (read1 && pixel) ? 7 : 0;
-    assign VGAG = (read1 && pixel) ? 7 : 0;
-    assign VGAB = (read1 && pixel) ? 3 : 0;
+    assign VGAR = pixel ? 7 : 0;
+    assign VGAG = pixel ? 7 : 0;
+    assign VGAB = pixel ? 3 : 0;
     assign read_h = pos_h < ACTIVE_H ? pos_h : 0;
     assign read_v = pos_v < ACTIVE_V ? pos_v : 0;
+    assign next_frame = pos_h == ACTIVE_H && pos_v == ACTIVE_V;
 
     always @(posedge clk) begin
 	next_pxl <= !next_pxl;
@@ -50,7 +49,6 @@ module display_vga (
 	    end else pos_h  <= pos_h + 1;
 	end
 	
-	read1 <= (pos_h < ACTIVE_H) && (pos_v < ACTIVE_V);
     end // always @ (posedge clk)
 
 endmodule // display_vga
@@ -199,10 +197,10 @@ module game(
 	    output wire      write
 	    );
 
-    localparam MAX_MOVE_DELAY = 50;
-    localparam FIRST_COLUMN = 4;
+    localparam MAX_MOVE_DELAY = 40;
+    localparam FIRST_COLUMN = 8;
     localparam FIRST_ROW = 20;
-    localparam LAST_COLUMN = 320 - 4;
+    localparam LAST_COLUMN = 320;
     localparam LAST_ROW = 180;
     
 //    localparam STATE_INIT = 0;
@@ -233,7 +231,7 @@ module game(
     reg [5:0] 	speed = 0;
     
     reg [5:0]  move_cnt = MAX_MOVE_DELAY;
-    reg [5:0]  cur_invader = 0;
+    reg [5:0]  cur_invader = 56;
     reg [8:0]  cur_invader_x;
     reg [7:0]  cur_invader_y;
 //    reg [1:0]  cur_sprite = SPRITE_SMALL_ALIEN;
@@ -243,7 +241,7 @@ module game(
 //    reg [3:0]  draw_y = 0;
     reg [1:0]  moving_direction = DIRECTION_RIGHT;
     reg        updated_direction;
-
+    
     reg [5:0]  next_kill = 7;
     
     wire [8:0] rel_write_x;
@@ -376,39 +374,43 @@ module game(
 	      state <= STATE_CHECK_COLLISIONS;
 	  end // case: STATE_MOVE_ALIENS
 	  STATE_CHECK_COLLISIONS: begin
-	      if(cur_invader == 0) begin
+	      if(cur_invader == 56) begin
 		  cur_invader_x <= first_invader_x;
 		  cur_invader_y <= first_invader_y;
-	      end
-	      if(cur_invader < 55) begin
+		  cur_invader <= 0;
+	      end else if(cur_invader < 55) begin
 		  if(!killed_invaders[cur_invader]) begin
 		      //Collision with screen edges
 		      if(!updated_direction) begin
-			  if(cur_invader_x == FIRST_COLUMN 
-			     || cur_invader_x == LAST_COLUMN - 16) begin
+			  if(cur_invader_x <= FIRST_COLUMN 
+			     || cur_invader_x >= LAST_COLUMN - 16) begin
 			      updated_direction <= 1;
+			      //cur_invader <= 0;
+			      //state <= STATE_TEST_SIMULATION;
 			      if(moving_direction == DIRECTION_DOWN)
-				if(cur_invader_x == FIRST_COLUMN)
+				if(cur_invader_x <= FIRST_COLUMN)
 				  moving_direction <= DIRECTION_RIGHT;
 				else moving_direction <= DIRECTION_LEFT;
 			      else moving_direction <= DIRECTION_DOWN;
 			  end
 		      end // if (!updated_direction)
-		      if(cur_invader_y == LAST_ROW) state <= STATE_GAME_OVER;
+		      if(cur_invader_y >= LAST_ROW) state <= STATE_GAME_OVER;
 		  end
 		  cur_invader <= cur_invader + 1;
-		  if(cur_invader_x + 16 >= first_invader_x + 11*16) begin
+		  if(cur_invader_x == first_invader_x + 10*16) begin
 		      cur_invader_x <= first_invader_x;
 		      cur_invader_y <= cur_invader_y + 16;
 		  end else cur_invader_x <= cur_invader_x + 16;
 	      end else begin // if (cur_invader < 55)
-		  cur_invader <= 0;
+		  cur_invader <= 56;
 		  state <= STATE_TEST_SIMULATION;
  	      end 	      
 	  end
 	  STATE_GAME_OVER: begin
 	  end
 	  STATE_TEST_SIMULATION: begin
+	      state <= STATE_WAIT;
+	      
 /*	      if(next_kill + 7 >= 55) next_kill <= next_kill - 48;
 	      else next_kill <= next_kill + 7;
 	      if(!killed_invaders[next_kill]) begin
@@ -454,6 +456,7 @@ module space_invaders (
     wire [8:0] write_x;
     wire [7:0] write_y;
     wire       write;
+    wire       next_frame;
     
     /*blockram ram(
 		.clk(clk),
@@ -475,33 +478,31 @@ module space_invaders (
 		    .VGAG(VGAG),
 		    .VGAB(VGAB),
 		    .pixel(read_res),
-		    .read(do_read),
 		    .read_h(read_h),
-		    .read_v(read_v)
+		    .read_v(read_v),
+		    .next_frame(next_frame)
 		    );
 
-    reg        do_read1;
-    
-    always @(posedge clk) begin
-	do_read1 <= do_read;
-    end
-    
     game ggame(
 	    .clk(clk),
-	    .next_move(~do_read & do_read1),
-//	    .do_write(do_read),
+	    .next_move(next_frame),
 	    .write_x(read_h >> 1),
 	    .write_y(read_v >> 1),
 	    .write(read_res)
 	    );
 
+    reg        was_next_frame = 0;
+    always @(posedge clk) begin
+	if(next_frame) was_next_frame <= ~was_next_frame;
+    end
+    
     assign led[0] = VGAR[2];
     assign led[1] = VGAG[2];
     assign led[2] = VGAB[2];
     assign led[3] = HSYNC;
     assign led[4] = VSYNC;
     assign led[5] = read_res;
-    assign led[6] = do_read;
-    assign led[7] = (read_h >> 1) == 0 && (read_v >> 1) == 0;
+    assign led[6] = next_frame;
+    assign led[7] = was_next_frame;
     
 endmodule // space_invaders
