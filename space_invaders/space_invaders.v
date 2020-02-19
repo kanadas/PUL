@@ -46,7 +46,7 @@ module display_vga (
 		pos_h <= 0;
 		if(pos_v == MAX_V - 1) begin
 		    pos_v <= 0;
-		end else pos_v <= pos_v - 1;
+		end else pos_v <= pos_v + 1;
 	    end else pos_h  <= pos_h + 1;
 	end
 	
@@ -230,7 +230,7 @@ module game(
     reg [8:0]  first_invader_x = FIRST_COLUMN;
     reg [7:0]  first_invader_y = FIRST_ROW; 
     reg [54:0]  killed_invaders = 0;
-    reg [5:0]  speed = 0;
+    reg [5:0] 	speed = 0;
     
     reg [5:0]  move_cnt = MAX_MOVE_DELAY;
     reg [5:0]  cur_invader = 0;
@@ -245,7 +245,7 @@ module game(
     reg        updated_direction;
 
     reg [5:0]  next_kill = 7;
-
+    
     wire [8:0] rel_write_x;
     wire [7:0] rel_write_y;
     wire [4:0] write_alien_x;
@@ -262,7 +262,7 @@ module game(
     assign write_sprite_x = rel_write_x[3:0];
     assign write_sprite_y = rel_write_y[3:0];
     
-    always @* begin
+/*    always @* begin
 	if(write_x >= first_invader_x && write_x < first_invader_x + 16*11
 	   && write_y >= first_invader_y && write_y < first_invader_y + 16*5
 	   && !killed_invaders[write_alien_x + write_alien_y * 11]) begin
@@ -275,8 +275,13 @@ module game(
 	    else pixel = 0;
 	end else pixel = 0;
     end // always @ *
+    
+    assign write = pixel;*/
 
-    assign write = pixel;
+    assign write = (write_x >= first_invader_x && write_x < first_invader_x + 16*11
+		    && write_y >= first_invader_y && write_y < first_invader_y + 16*5);
+
+//    assign write = write_x[0] & write_y[0];
     
     always @(posedge clk) begin
 	case (state)
@@ -404,14 +409,14 @@ module game(
 	  STATE_GAME_OVER: begin
 	  end
 	  STATE_TEST_SIMULATION: begin
-	      if(next_kill + 7 >= 55) next_kill <= next_kill - 48;
+/*	      if(next_kill + 7 >= 55) next_kill <= next_kill - 48;
 	      else next_kill <= next_kill + 7;
 	      if(!killed_invaders[next_kill]) begin
 		  killed_invaders[next_kill] <= 1;
 		  speed <= speed + 1;
 	      end
-	      if(speed == 54 && !killed_invaders[next_kill]) state <= STATE_GAME_OVER;
-	      else state <= STATE_WAIT;
+//	      if(speed == 54 && !killed_invaders[next_kill]) state <= STATE_GAME_OVER;
+	      else state <= STATE_WAIT;*/
 	  end
 	endcase // case (state)
     end // always @ (posedge clk)
@@ -422,7 +427,7 @@ module space_invaders (
 		       input wire 	 uclk,
 		       //input wire [3:0]  btn,
 		       //input wire [7:0]  sw,
-		       //output wire [7:0] led,
+		       output wire [7:0] led,
 		       output wire 	 HSYNC,
 		       output wire 	 VSYNC,
 		       output wire [2:0] VGAR,
@@ -490,4 +495,13 @@ module space_invaders (
 	    .write(read_res)
 	    );
 
+    assign led[0] = VGAR[2];
+    assign led[1] = VGAG[2];
+    assign led[2] = VGAB[2];
+    assign led[3] = HSYNC;
+    assign led[4] = VSYNC;
+    assign led[5] = read_res;
+    assign led[6] = do_read;
+    assign led[7] = (read_h >> 1) == 0 && (read_v >> 1) == 0;
+    
 endmodule // space_invaders
