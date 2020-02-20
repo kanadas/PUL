@@ -10,7 +10,8 @@ module display_vga (
 		    input wire 	      pixel,
 		    output wire [9:0] read_h,
 		    output wire [8:0] read_v,
-		    output wire       next_frame
+		    output wire       next_frame,
+		    output wire       next_line      
 		    );
 
     localparam ACTIVE_H =  640;
@@ -37,6 +38,7 @@ module display_vga (
     assign read_h = pos_h < ACTIVE_H ? pos_h : 0;
     assign read_v = pos_v < ACTIVE_V ? pos_v : 0;
     assign next_frame = pos_h == ACTIVE_H && pos_v == ACTIVE_V;
+    assign next_line = pos_h == ACTIVE_H && !pos_v[0] && pos_v < ACTIVE_V - 2;
 
     always @(posedge clk) begin
 	next_pxl <= !next_pxl;
@@ -187,30 +189,97 @@ endmodule // display_vga
 
 endmodule // blockram
 */
+
+module cache_lines(
+		   input wire 	    clk,
+		   input wire [8:0] save_x,
+		   input wire 	    save_y,
+		   input wire 	    save_next,
+		   input wire 	    save_pixel,
+		   input wire [8:0] read_x, 
+		   input wire 	    read_y,
+		   input wire 	    read_next,
+		   output wire 	    read_pixel
+		   );
+    
+    reg pixels[639:0];
+    reg read;
+
+    wire [9:0] save_idx;
+    wire [9:0] read_idx;
+    
+    assign save_idx = save_x + (save_y ? 320 : 0);
+    assign read_idx = read_x + (read_y ? 320 : 0);
+    assign read_pixel = read;
+
+    always @(posedge clk) begin
+	if(save_next) pixels[save_idx] <= save_pixel;
+	if(read_next) read <= pixels[read_idx];
+    end
+    
+endmodule // cache_lines
+
+module game_memory(input wire clk,
+		   input wire [5:0] check_killed,
+		   input wire [5:0] kill_invader,
+		   input wire 	    do_kill_invader,
+		   output wire 	    is_killed
+		   );
+
+    reg [54:0] killed_invaders;
+    reg        read_res;
+
+    assign is_killed = read_res;
+    
+    always @(posedge clk) begin    
+	read_res <= killed_invaders[check_killed];
+	if(do_kill_invader) begin
+	    killed_invaders[kill_invader] <= 1;
+	end
+    end
+
+endmodule // game_memory
  
 module game(
 	    input wire 	     clk,
 	    input wire 	     next_move,
+	    input wire 	     next_line,
+	    input wire [1:0] cannon_action,
 //	    input wire 	     do_write,
-	    input wire [8:0] write_x,
-	    input wire [7:0] write_y,
-	    output wire      write
+	    input wire [8:0] read_x,
+	    input wire [7:0] read_y,
+	    input wire 	     read_next,
+	    output wire      pixel,
+
+	    output wire      save_pixel_debug,
+	    output wire      y_debug,
+	    output wire      kill_debug
 	    );
 
-    localparam MAX_MOVE_DELAY = 40;
-    localparam FIRST_COLUMN = 8;
+    assign save_pixel_debug = save_pixel;
+    assign y_debug = write_y[0] == read_y[0] && read_y != 0;
+    reg 		     kill_debug_reg = 0;
+    assign kill_debug = kill_debug_reg;
+    always @(posedge clk)  begin
+	if(do_kill_invader && kill_invader < 55) kill_debug_reg <= 1;
+    end;
+    
+    
+    localparam MAX_MOVE_DELAY = 60;
+    localparam FIRST_COLUMN = 4;
     localparam FIRST_ROW = 20;
     localparam LAST_COLUMN = 320;
     localparam LAST_ROW = 180;
     
 //    localparam STATE_INIT = 0;
     localparam STATE_WAIT = 0;
+    localparam STATE_WRITE_LINE = 1;
 //    localparam STATE_DRAW_SPRITE = 2;
 //    localparam STATE_REDRAW = 3;
-    localparam STATE_CHECK_COLLISIONS = 1;
-    localparam STATE_MOVE_ALIENS = 2;
-    localparam STATE_GAME_OVER = 3;
-    localparam STATE_TEST_SIMULATION = 4;
+    localparam STATE_CHECK_COLLISIONS = 2;
+    localparam STATE_MOVE_ALIENS = 3;
+    localparam STATE_GAME_OVER = 4;
+    localparam STATE_TEST_SIMULATION = 5;
 
     localparam SPRITE_BIG_ALIEN = 0;
     localparam SPRITE_MID_ALIEN = 1;
@@ -219,6 +288,13 @@ module game(
     localparam DIRECTION_RIGHT = 0;
     localparam DIRECTION_LEFT = 1;
     localparam DIRECTION_DOWN = 2;
+
+    localparam CANNON_NO_ACTION = 0;
+    localparam CANNON_MOVE_LEFT = 1;
+    localparam CANNON_MOVE_RIGHT = 2;
+    localparam CANNON_SHOT = 3;
+
+    localparam CANNON_POS_Y = LAST_ROW + 1;
     
     reg [2:0]  state = STATE_WAIT;
 //    reg        init_finished = 1;
@@ -227,7 +303,6 @@ module game(
 //    reg [7:0]  invaders_y [54:0];
     reg [8:0]  first_invader_x = FIRST_COLUMN;
     reg [7:0]  first_invader_y = FIRST_ROW; 
-    reg [54:0]  killed_invaders = 0;
     reg [5:0] 	speed = 0;
     
     reg [5:0]  move_cnt = MAX_MOVE_DELAY;
@@ -241,6 +316,7 @@ module game(
 //    reg [3:0]  draw_y = 0;
     reg [1:0]  moving_direction = DIRECTION_RIGHT;
     reg        updated_direction;
+    reg [8:0]  cannon_pos_x;
     
     reg [5:0]  next_kill = 7;
     
@@ -250,15 +326,50 @@ module game(
     wire [3:0] write_alien_y;
     wire [3:0] write_sprite_x;
     wire [3:0] write_sprite_y;
+    wire [8:0] rel_write_next_x;
+    wire [4:0] write_alien_next_x;
+    
+    reg [5:0]  check_killed = 0;
+    reg [5:0]  kill_invader;
+    reg        do_kill_invader = 0;
+    wire       is_killed;
+    reg        is_invader = 0;
+    reg        is_invader1 = 0;
+    
+    game_memory game_memory_inst(.clk(clk),
+				 .check_killed(check_killed),
+				 .kill_invader(kill_invader),
+				 .do_kill_invader(do_kill_invader),
+				 .is_killed(is_killed)
+				 );
 
-    reg        pixel;
+    reg        save_next = 0;
+    reg        save_pixel;
+    reg [8:0]  write_x = 0;
+    wire [7:0]  write_y;
+    assign write_y = read_y + 1;
 
+    cache_lines cache_lines_inst(.clk(clk),
+				 .save_x(write_x),
+				 .save_y(write_y[0]),
+				 .save_next(save_next),
+				 .save_pixel(save_pixel),
+				 .read_x(read_x),
+				 .read_y(read_y[0]),
+				 .read_next(1),
+				 .read_pixel(pixel)
+				 );
+
+    
     assign rel_write_x = write_x - first_invader_x;
     assign rel_write_y = write_y - first_invader_y;
     assign write_alien_x = rel_write_x >> 4;
     assign write_alien_y = rel_write_y >> 4;
     assign write_sprite_x = rel_write_x[3:0];
     assign write_sprite_y = rel_write_y[3:0];
+
+    assign rel_write_next_x = write_x + 2 - first_invader_x;
+    assign write_alien_next_x = rel_write_next_x >> 4;
     
 /*    always @* begin
 	if(write_x >= first_invader_x && write_x < first_invader_x + 16*11
@@ -266,22 +377,16 @@ module game(
 	   && !killed_invaders[write_alien_x + write_alien_y * 11]) begin
 	    //Read sprite pixel
 	    if(write_sprite_y < 8) pixel = 0;
-	    else if(write_sprite_x < 8 ||
-		    (write_sprite_x < 11 && write_alien_y > 0) ||
+	    else if((write_sprite_x >= 2 && write_sprite_x < 10) ||
+		    (write_sprite_x >= 1 && write_sprite_x < 11 && write_alien_y > 0) ||
 		    (write_sprite_x < 12 && write_alien_y > 2))
 	      pixel = 1;
 	    else pixel = 0;
 	end else pixel = 0;
     end // always @ *
-    
-    assign write = pixel;*/
+*/
 
-    assign write = (write_x >= first_invader_x && write_x < first_invader_x + 16*11
-		    && write_y >= first_invader_y && write_y < first_invader_y + 16*5);
-
-//    assign write = write_x[0] & write_y[0];
-    
-    always @(posedge clk) begin
+    always @(posedge clk) begin	
 	case (state)
 /*	  STATE_INIT : begin
 	      if(cur_invader < 55) begin
@@ -305,38 +410,51 @@ module game(
 		  state <= STATE_WAIT;
 	      end
 	  end // case: STATE_INIT*/
-	  STATE_WAIT: 
-	    if(next_move) begin
-		if(move_cnt == 0) begin
-		    move_cnt <= MAX_MOVE_DELAY - speed;
-		    state <= STATE_MOVE_ALIENS;
-		end else move_cnt <= move_cnt - 1;
-	    end
-/*	  STATE_DRAW_SPRITE: begin
-	      case(cur_sprite)
-		SPRITE_BIG_ALIEN: begin
-		    if(draw_x < 12 && draw_y >= 8) write <= 1;
-		    else write <= 0;
-		end
-		SPRITE_MID_ALIEN: begin
-		    if(draw_x < 11 && draw_y >= 8) write <= 1;
-		    else write <= 0;
-		end
-		SPRITE_SMALL_ALIEN: begin
-		    if(draw_x < 8 && draw_y >= 8) write <= 1;
-		    else write <= 0;
-		end
-	      endcase // case (cur_sprite)
-	      if(draw_x == 15) begin
-		  draw_x <= 0;
-		  if(draw_y == 15) begin
-		      draw_y <= 0;
-		      if(init_finished) state <= STATE_INIT;
-		      else state <= STATE_REDRAW;
-		  end else draw_y <= draw_y + 1;
-	      end else draw_x <= draw_x + 1;
-	  end // case: STATE_DRAW_SPRITE
-	  STATE_REDRAW: begin
+	  STATE_WAIT: begin
+	      if(next_move) begin
+		  if(move_cnt == 0) begin
+		      move_cnt <= MAX_MOVE_DELAY - speed;
+		      state <= STATE_MOVE_ALIENS;
+		  end else move_cnt <= move_cnt - 1;
+	      end
+	      if(next_line) begin
+		  write_x <= 0;
+		  //write_y <= write_y + 1;
+		  state <= STATE_WRITE_LINE;
+		  // There wont be any invider with x=0 so don't have to query memory here
+		  is_invader <= 0;
+	      end
+	  end // case: STATE_WAIT
+	  STATE_WRITE_LINE: begin
+	      if(write_x < 320) begin
+		  //Prefetch
+		  if(write_y >= first_invader_y && write_y < first_invader_y + 16*5
+		     && write_x + 2 >= first_invader_x && write_x + 2 < first_invader_x + 16*11) begin
+		      is_invader1 <= 1;
+		      check_killed <= write_alien_next_x + write_alien_y * 11;
+		  end else is_invader1 <= 0;
+		  is_invader <= is_invader1;
+		  if(is_invader && !is_killed) begin
+		      //TODO move it to generic sprite module
+		      if(write_sprite_y < 8) save_pixel <= 0;
+		      else if((write_sprite_x >= 2 && write_sprite_x < 10) ||
+			      (write_sprite_x >= 1 && write_sprite_x < 11 && write_alien_y > 0) ||
+			      (write_sprite_x < 12 && write_alien_y > 2))
+			save_pixel <= 1;
+		      else save_pixel <= 0;
+		  end else if(write_y >= CANNON_POS_Y && write_y < CANNON_POS_Y + 8
+			      && write_x >= cannon_pos_x && write_x < cannon_pos_x + 15)
+		    save_pixel <= 1;
+		  else save_pixel <= 0;
+		  write_x <= write_x + 1;
+		  save_next <= 1;
+	      end else begin
+		  state <= STATE_WAIT;
+		  save_next <= 0;
+		  is_invader <= 0;
+	      end
+	  end // case: STATE_WRITE_LINE
+/*	  STATE_REDRAW: begin
 	      if(cur_invader < 55) begin
 		  if(!killed_invaders[cur_invader]) begin
 		      sprite_x <= invaders_x[cur_invader];
@@ -361,10 +479,10 @@ module game(
 	  STATE_MOVE_ALIENS: begin
 	      case(moving_direction)
 		DIRECTION_RIGHT: begin
-		    first_invader_x <= first_invader_x + 1;
+		    first_invader_x <= first_invader_x + 2;
 		end
 		DIRECTION_LEFT: begin
-		    first_invader_x <= first_invader_x - 1;
+		    first_invader_x <= first_invader_x - 2;
 		end
 		DIRECTION_DOWN: begin
 		    first_invader_y <= first_invader_y + 8;
@@ -378,8 +496,9 @@ module game(
 		  cur_invader_x <= first_invader_x;
 		  cur_invader_y <= first_invader_y;
 		  cur_invader <= 0;
+		  check_killed <= 0;
 	      end else if(cur_invader < 55) begin
-		  if(!killed_invaders[cur_invader]) begin
+		  if(!is_killed) begin
 		      //Collision with screen edges
 		      if(!updated_direction) begin
 			  if(cur_invader_x <= FIRST_COLUMN 
@@ -394,40 +513,73 @@ module game(
 			      else moving_direction <= DIRECTION_DOWN;
 			  end
 		      end // if (!updated_direction)
-		      if(cur_invader_y >= LAST_ROW) state <= STATE_GAME_OVER;
+		      if(cur_invader_y + 16 >= LAST_ROW) state <= STATE_GAME_OVER;
 		  end
 		  cur_invader <= cur_invader + 1;
+		  check_killed <= check_killed + 1;
 		  if(cur_invader_x == first_invader_x + 10*16) begin
 		      cur_invader_x <= first_invader_x;
 		      cur_invader_y <= cur_invader_y + 16;
 		  end else cur_invader_x <= cur_invader_x + 16;
 	      end else begin // if (cur_invader < 55)
 		  cur_invader <= 56;
+		  //check_killed <= 0;
+		  check_killed <= next_kill;
 		  state <= STATE_TEST_SIMULATION;
+		  //write_x <= 0;
+		  //write_y <= 0;
+		  //state <= STATE_WRITE_LINE;
  	      end 	      
 	  end
 	  STATE_GAME_OVER: begin
 	  end
 	  STATE_TEST_SIMULATION: begin
-	      state <= STATE_WAIT;
-	      
-/*	      if(next_kill + 7 >= 55) next_kill <= next_kill - 48;
+/*	      write_x <= 0;
+	      state <= STATE_WRITE_LINE;*/
+	      if(next_kill + 7 >= 55) next_kill <= next_kill - 48;
 	      else next_kill <= next_kill + 7;
-	      if(!killed_invaders[next_kill]) begin
-		  killed_invaders[next_kill] <= 1;
+	      if(!is_killed) begin
+		  kill_invader <= next_kill;
+		  do_kill_invader <= 1;
 		  speed <= speed + 1;
+	      end else do_kill_invader <= 0;
+	      if(speed == 54 && !is_killed) state <= STATE_GAME_OVER;
+	      else begin
+		  check_killed <= 0;
+		  //state <= STATE_WAIT;
+		  write_x <= 0;
+		  state <= STATE_WRITE_LINE;
 	      end
-//	      if(speed == 54 && !killed_invaders[next_kill]) state <= STATE_GAME_OVER;
-	      else state <= STATE_WAIT;*/
 	  end
 	endcase // case (state)
     end // always @ (posedge clk)
 
+    localparam CANNON_ACTION_MAX_DELAY = 1000000;
+    reg [31:0] cannon_action_delay = 0;
+    
+    always @(posedge clk) begin
+	if(cannon_action_delay == 0) begin
+	  case (cannon_action)
+	    CANNON_MOVE_LEFT: begin
+		if(cannon_pos_x < LAST_COLUMN - 16) cannon_pos_x <= cannon_pos_x + 1;
+		cannon_action_delay <= CANNON_ACTION_MAX_DELAY;
+	    end
+	    CANNON_MOVE_RIGHT: begin
+		if(cannon_pos_x > FIRST_COLUMN) cannon_pos_x <= cannon_pos_x - 1;
+		cannon_action_delay <= CANNON_ACTION_MAX_DELAY;
+	    end
+	    CANNON_SHOT: begin
+		//TODO
+	    end
+	  endcase // case (cannon_action)
+	end else cannon_action_delay <= cannon_action_delay - 1;
+    end
+    
 endmodule // game
 
 module space_invaders (
 		       input wire 	 uclk,
-		       //input wire [3:0]  btn,
+		       input wire [3:0]  btn,
 		       //input wire [7:0]  sw,
 		       output wire [7:0] led,
 		       output wire 	 HSYNC,
@@ -448,6 +600,20 @@ module space_invaders (
 			.RST(1'b0)
 			);
 
+    localparam CANNON_NO_ACTION = 0;
+    localparam CANNON_MOVE_LEFT = 1;
+    localparam CANNON_MOVE_RIGHT = 2;
+    localparam CANNON_SHOT = 3;
+
+    reg [1:0] cannon_action = CANNON_NO_ACTION;
+    
+    always @(posedge clk) begin
+	if(btn[0]) cannon_action <= CANNON_MOVE_RIGHT;
+	else if(btn[3]) cannon_action <= CANNON_MOVE_LEFT;
+	else if(btn[1] || btn[2]) cannon_action <= CANNON_SHOT;
+	else cannon_action <= CANNON_NO_ACTION;
+    end
+    
     wire [9:0] read_h;
     wire [8:0] read_v;
     wire       do_read;
@@ -457,6 +623,7 @@ module space_invaders (
     wire [7:0] write_y;
     wire       write;
     wire       next_frame;
+    wire       next_line;
     
     /*blockram ram(
 		.clk(clk),
@@ -469,40 +636,42 @@ module space_invaders (
 		.write_y(write_y),
 		.write(write)
 		);*/
-    
-    display_vga disp(
-		    .clk(clk),
-		    .HSYNC(HSYNC),
-		    .VSYNC(VSYNC),
-		    .VGAR(VGAR),
-		    .VGAG(VGAG),
-		    .VGAB(VGAB),
-		    .pixel(read_res),
-		    .read_h(read_h),
-		    .read_v(read_v),
-		    .next_frame(next_frame)
-		    );
 
-    game ggame(
-	    .clk(clk),
-	    .next_move(next_frame),
-	    .write_x(read_h >> 1),
-	    .write_y(read_v >> 1),
-	    .write(read_res)
-	    );
+    display_vga display_inst(
+			     .clk(clk),
+			     .HSYNC(HSYNC),
+			     .VSYNC(VSYNC),
+			     .VGAR(VGAR),
+			     .VGAG(VGAG),
+			     .VGAB(VGAB),
+			     .pixel(read_res),
+			     .read_h(read_h),
+			     .read_v(read_v),
+			     .next_frame(next_frame),
+			     .next_line(next_line)
+			     );
 
-    reg        was_next_frame = 0;
-    always @(posedge clk) begin
-	if(next_frame) was_next_frame <= ~was_next_frame;
-    end
-    
+    game game_inst(
+		   .clk(clk),
+		   .next_move(next_frame),
+		   .next_line(next_line),
+		   .cannon_action(cannon_action),
+		   .read_x(read_h >> 1),
+		   .read_y(read_v >> 1),
+		   .pixel(read_res),
+
+		   .save_pixel_debug(led[7]),
+		   .y_debug(led[6]),
+		   .kill_debug(led[5])
+		   );
+
     assign led[0] = VGAR[2];
     assign led[1] = VGAG[2];
     assign led[2] = VGAB[2];
     assign led[3] = HSYNC;
     assign led[4] = VSYNC;
-    assign led[5] = read_res;
-    assign led[6] = next_frame;
-    assign led[7] = was_next_frame;
-    
+//    assign led[5] = read_res;
+//    assign led[6] = next_frame;
+//    assign led[7] = save_pixel;
+
 endmodule // space_invaders
