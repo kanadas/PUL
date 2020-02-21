@@ -251,21 +251,13 @@ module game(
 	    input wire 	     read_next,
 	    output wire      pixel,
 
-	    output wire      save_pixel_debug,
-	    output wire      y_debug,
 	    output wire      kill_debug
 	    );
 
-    assign save_pixel_debug = save_pixel;
-    assign y_debug = write_y[0] == read_y[0] && read_y != 0;
     reg 		     kill_debug_reg = 0;
     assign kill_debug = kill_debug_reg;
-    always @(posedge clk)  begin
-	if(do_kill_invader && kill_invader < 55) kill_debug_reg <= 1;
-    end;
     
-    
-    localparam MAX_MOVE_DELAY = 60;
+    localparam MAX_MOVE_DELAY = 55;
     localparam FIRST_COLUMN = 4;
     localparam FIRST_ROW = 20;
     localparam LAST_COLUMN = 320;
@@ -278,7 +270,7 @@ module game(
 //    localparam STATE_REDRAW = 3;
     localparam STATE_CHECK_COLLISIONS = 2;
 //    localparam STATE_MOVE_ALIENS = 3;
-    localparam STATE_GAME_OVER = 4;
+    localparam STATE_GAME_OVER = 3;
 //    localparam STATE_TEST_SIMULATION = 5;
 
     localparam SPRITE_BIG_ALIEN = 0;
@@ -307,7 +299,7 @@ module game(
     
     reg [5:0]  alien_move_cnt = MAX_MOVE_DELAY;
     reg [5:0]  cur_invader = 56;
-    reg [8:0]  cur_invader_x;
+    reg [8:0]  cur_invader_x;    
     reg [7:0]  cur_invader_y;
 //    reg [1:0]  cur_sprite = SPRITE_SMALL_ALIEN;
 //    reg [8:0]  sprite_x = FIRST_COLUMN + 16*11;
@@ -432,12 +424,12 @@ module game(
 			    first_invader_y <= first_invader_y + 8;
 			end
 		      endcase // case (moving_direction)
+		      updated_direction <= 0;
 		  end else alien_move_cnt <= alien_move_cnt - 1; // if (alien_move_cnt == 0)
 		  if(is_cannon_bullet) begin
-			     if(cannon_bullet_y > 0) cannon_bullet_y <= cannon_bullet_y - 2;
+			     if(cannon_bullet_y > 1) cannon_bullet_y <= cannon_bullet_y - 2;
 			     else is_cannon_bullet <= 0;
 		  end
-		  updated_direction <= 0;
 		  state <= STATE_CHECK_COLLISIONS;		      
 	      end
 	      if(next_line) begin
@@ -457,16 +449,14 @@ module game(
 		      check_killed <= write_alien_next_x + write_alien_y * 11;
 		  end else is_invader1 <= 0;
 		  is_invader <= is_invader1;
-		  if(is_invader && !is_killed) begin
-		      //TODO move it to generic sprite module
-		      if(write_sprite_y < 8) save_pixel <= 0;
-		      else if((write_sprite_x >= 2 && write_sprite_x < 10) ||
-			      (write_sprite_x >= 1 && write_sprite_x < 11 && write_alien_y > 0) ||
-			      (write_sprite_x < 12 && write_alien_y > 2))
-			save_pixel <= 1;
-		      else save_pixel <= 0;
-		  end else if(write_y >= CANNON_POS_Y && write_y < CANNON_POS_Y + 8
-			      && write_x >= cannon_pos_x && write_x < cannon_pos_x + 15)
+		  //TODO move it to generic sprite module
+		  if(is_invader && !is_killed && write_sprite_y >= 8 &&
+		     ((write_sprite_x >= 2 && write_sprite_x < 10) ||
+		      (write_sprite_x >= 1 && write_sprite_x < 11 && write_alien_y > 0) ||
+		      (write_sprite_x < 12 && write_alien_y > 2)))
+		    save_pixel <= 1;
+		  else if(write_y >= CANNON_POS_Y && write_y < CANNON_POS_Y + 8
+			  && write_x >= cannon_pos_x && write_x < cannon_pos_x + 15)
 		    save_pixel <= 1;
 		  else if(is_cannon_bullet && cannon_bullet_x == write_x
 			  && write_y >= cannon_bullet_y && write_y < cannon_bullet_y + 4)
@@ -503,11 +493,15 @@ module game(
 	      end // else: !if(cur_invader < 55)
 	  end // case: STATE_REDRAW*/
 	  STATE_CHECK_COLLISIONS: begin
+	      //Need 2 cycles to get result from ram
 	      if(cur_invader == 56) begin
+		  cur_invader <= 57;
+		  check_killed <= 0;
+	      end else if(cur_invader == 57) begin
 		  cur_invader_x <= first_invader_x;
 		  cur_invader_y <= first_invader_y;
 		  cur_invader <= 0;
-		  check_killed <= 0;
+		  check_killed <= 1;
 	      end else if(cur_invader < 55) begin
 		  if(!is_killed) begin
 		      //Collision with screen edges
@@ -525,7 +519,7 @@ module game(
 			  end
 		      end // if (!updated_direction)
 		      if(cur_invader_y + 16 >= LAST_ROW) state <= STATE_GAME_OVER;
-
+		      
 		      //Collision with bullet
 		      if(is_cannon_bullet && cannon_bullet_y + 4 >= cur_invader_y
 			 && cannon_bullet_y < cur_invader_y + 16
@@ -539,8 +533,11 @@ module game(
 			  do_kill_invader <= 1;
 			  speed <= speed + 1;
 			  is_cannon_bullet <= 0;
+
+			  kill_debug_reg <= 1;
+			  
 		      end else do_kill_invader <= 0;
-		  end
+		  end // if (!is_killed)
 		  cur_invader <= cur_invader + 1;
 		  check_killed <= check_killed + 1;
 		  if(cur_invader_x == first_invader_x + 10*16) begin
@@ -594,6 +591,9 @@ module game(
 		    is_cannon_bullet <= 1;
 		    cannon_bullet_x <= cannon_pos_x + 7;
 		    cannon_bullet_y <= CANNON_POS_Y + 4;
+
+		    kill_debug_reg <= 0;
+		    
 		end
 		cannon_action_delay <= CANNON_ACTION_MAX_DELAY;
 	    end
@@ -632,11 +632,18 @@ module space_invaders (
     localparam CANNON_SHOT = 3;
 
     reg [1:0] cannon_action = CANNON_NO_ACTION;
+
+    reg [3:0] btn1 = 0;
+    reg [3:0] btn2 = 0;
+    reg [3:0] btn3 = 0;
     
     always @(posedge clk) begin
-	if(btn[0]) cannon_action <= CANNON_MOVE_RIGHT;
-	else if(btn[3]) cannon_action <= CANNON_MOVE_LEFT;
-	else if(btn[1] || btn[2]) cannon_action <= CANNON_SHOT;
+	btn1 <= btn;
+	btn2 <= btn1;
+	btn3 <= btn2;
+	if(btn3[0]) cannon_action <= CANNON_MOVE_RIGHT;
+	else if(btn3[3]) cannon_action <= CANNON_MOVE_LEFT;
+	else if(btn3[1] || btn3[2]) cannon_action <= CANNON_SHOT;
 	else cannon_action <= CANNON_NO_ACTION;
     end
     
@@ -686,9 +693,7 @@ module space_invaders (
 		   .read_y(read_v >> 1),
 		   .pixel(read_res),
 
-		   .save_pixel_debug(led[7]),
-		   .y_debug(led[6]),
-		   .kill_debug(led[5])
+		   .kill_debug(led[7])
 		   );
 
     assign led[0] = VGAR[2];
@@ -696,8 +701,8 @@ module space_invaders (
     assign led[2] = VGAB[2];
     assign led[3] = HSYNC;
     assign led[4] = VSYNC;
-//    assign led[5] = read_res;
-//    assign led[6] = next_frame;
+    assign led[5] = read_res;
+    assign led[6] = next_frame;
 //    assign led[7] = save_pixel;
 
 endmodule // space_invaders
