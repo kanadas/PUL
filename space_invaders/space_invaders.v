@@ -277,9 +277,9 @@ module game(
 //    localparam STATE_DRAW_SPRITE = 2;
 //    localparam STATE_REDRAW = 3;
     localparam STATE_CHECK_COLLISIONS = 2;
-    localparam STATE_MOVE_ALIENS = 3;
+//    localparam STATE_MOVE_ALIENS = 3;
     localparam STATE_GAME_OVER = 4;
-    localparam STATE_TEST_SIMULATION = 5;
+//    localparam STATE_TEST_SIMULATION = 5;
 
     localparam SPRITE_BIG_ALIEN = 0;
     localparam SPRITE_MID_ALIEN = 1;
@@ -305,7 +305,7 @@ module game(
     reg [7:0]  first_invader_y = FIRST_ROW; 
     reg [5:0] 	speed = 0;
     
-    reg [5:0]  move_cnt = MAX_MOVE_DELAY;
+    reg [5:0]  alien_move_cnt = MAX_MOVE_DELAY;
     reg [5:0]  cur_invader = 56;
     reg [8:0]  cur_invader_x;
     reg [7:0]  cur_invader_y;
@@ -316,9 +316,16 @@ module game(
 //    reg [3:0]  draw_y = 0;
     reg [1:0]  moving_direction = DIRECTION_RIGHT;
     reg        updated_direction;
-    reg [8:0]  cannon_pos_x;
     
-    reg [5:0]  next_kill = 7;
+    reg [8:0]  cannon_pos_x;
+    reg [8:0]  cannon_bullet_x;
+    reg [7:0]  cannon_bullet_y;
+    reg        is_cannon_bullet = 0;
+
+    localparam CANNON_ACTION_MAX_DELAY = 1000000;
+    reg [31:0] cannon_action_delay = 0;
+    
+//    reg [5:0]  next_kill = 7;
     
     wire [8:0] rel_write_x;
     wire [7:0] rel_write_y;
@@ -412,10 +419,26 @@ module game(
 	  end // case: STATE_INIT*/
 	  STATE_WAIT: begin
 	      if(next_move) begin
-		  if(move_cnt == 0) begin
-		      move_cnt <= MAX_MOVE_DELAY - speed;
-		      state <= STATE_MOVE_ALIENS;
-		  end else move_cnt <= move_cnt - 1;
+		  if(alien_move_cnt == 0) begin
+		      alien_move_cnt <= MAX_MOVE_DELAY - speed;
+		      case(moving_direction)
+			DIRECTION_RIGHT: begin
+			    first_invader_x <= first_invader_x + 2;
+			end
+			DIRECTION_LEFT: begin
+			    first_invader_x <= first_invader_x - 2;
+			end
+			DIRECTION_DOWN: begin
+			    first_invader_y <= first_invader_y + 8;
+			end
+		      endcase // case (moving_direction)
+		  end else alien_move_cnt <= alien_move_cnt - 1; // if (alien_move_cnt == 0)
+		  if(is_cannon_bullet) begin
+			     if(cannon_bullet_y > 0) cannon_bullet_y <= cannon_bullet_y - 2;
+			     else is_cannon_bullet <= 0;
+		  end
+		  updated_direction <= 0;
+		  state <= STATE_CHECK_COLLISIONS;		      
 	      end
 	      if(next_line) begin
 		  write_x <= 0;
@@ -444,6 +467,9 @@ module game(
 		      else save_pixel <= 0;
 		  end else if(write_y >= CANNON_POS_Y && write_y < CANNON_POS_Y + 8
 			      && write_x >= cannon_pos_x && write_x < cannon_pos_x + 15)
+		    save_pixel <= 1;
+		  else if(is_cannon_bullet && cannon_bullet_x == write_x
+			  && write_y >= cannon_bullet_y && write_y < cannon_bullet_y + 4)
 		    save_pixel <= 1;
 		  else save_pixel <= 0;
 		  write_x <= write_x + 1;
@@ -476,21 +502,6 @@ module game(
 		  end
 	      end // else: !if(cur_invader < 55)
 	  end // case: STATE_REDRAW*/
-	  STATE_MOVE_ALIENS: begin
-	      case(moving_direction)
-		DIRECTION_RIGHT: begin
-		    first_invader_x <= first_invader_x + 2;
-		end
-		DIRECTION_LEFT: begin
-		    first_invader_x <= first_invader_x - 2;
-		end
-		DIRECTION_DOWN: begin
-		    first_invader_y <= first_invader_y + 8;
-		end
-	      endcase // case (moving_direction)
-	      updated_direction <= 0;
-	      state <= STATE_CHECK_COLLISIONS;
-	  end // case: STATE_MOVE_ALIENS
 	  STATE_CHECK_COLLISIONS: begin
 	      if(cur_invader == 56) begin
 		  cur_invader_x <= first_invader_x;
@@ -514,6 +525,21 @@ module game(
 			  end
 		      end // if (!updated_direction)
 		      if(cur_invader_y + 16 >= LAST_ROW) state <= STATE_GAME_OVER;
+
+		      //Collision with bullet
+		      if(is_cannon_bullet && cannon_bullet_y + 4 >= cur_invader_y
+			 && cannon_bullet_y < cur_invader_y + 16
+			 && ((cannon_bullet_x >= cur_invader_x + 2 
+			      && cannon_bullet_x < cur_invader_x + 10) ||
+			     (cannon_bullet_x >= cur_invader_x + 1 
+			      && cannon_bullet_x < cur_invader_x + 11 && cur_invader > 10) ||
+			     (cannon_bullet_x >= cur_invader_x 
+			      && cannon_bullet_x < cur_invader_x + 12 && cur_invader > 32))) begin
+			  kill_invader <= cur_invader;
+			  do_kill_invader <= 1;
+			  speed <= speed + 1;
+			  is_cannon_bullet <= 0;
+		      end else do_kill_invader <= 0;
 		  end
 		  cur_invader <= cur_invader + 1;
 		  check_killed <= check_killed + 1;
@@ -523,19 +549,18 @@ module game(
 		  end else cur_invader_x <= cur_invader_x + 16;
 	      end else begin // if (cur_invader < 55)
 		  cur_invader <= 56;
-		  //check_killed <= 0;
-		  check_killed <= next_kill;
-		  state <= STATE_TEST_SIMULATION;
-		  //write_x <= 0;
-		  //write_y <= 0;
-		  //state <= STATE_WRITE_LINE;
+		  check_killed <= 0;
+		  //check_killed <= next_kill;
+		  //state <= STATE_TEST_SIMULATION;
+		  write_x <= 0;
+		  state <= STATE_WRITE_LINE;
  	      end 	      
 	  end
 	  STATE_GAME_OVER: begin
 	  end
-	  STATE_TEST_SIMULATION: begin
-/*	      write_x <= 0;
-	      state <= STATE_WRITE_LINE;*/
+/*	  STATE_TEST_SIMULATION: begin
+//	      write_x <= 0;
+//	      state <= STATE_WRITE_LINE;
 	      if(next_kill + 7 >= 55) next_kill <= next_kill - 48;
 	      else next_kill <= next_kill + 7;
 	      if(!is_killed) begin
@@ -550,30 +575,31 @@ module game(
 		  write_x <= 0;
 		  state <= STATE_WRITE_LINE;
 	      end
-	  end
+	  end*/
 	endcase // case (state)
-    end // always @ (posedge clk)
 
-    localparam CANNON_ACTION_MAX_DELAY = 1000000;
-    reg [31:0] cannon_action_delay = 0;
-    
-    always @(posedge clk) begin
+
 	if(cannon_action_delay == 0) begin
 	  case (cannon_action)
 	    CANNON_MOVE_LEFT: begin
-		if(cannon_pos_x < LAST_COLUMN - 16) cannon_pos_x <= cannon_pos_x + 1;
+		if(cannon_pos_x >= FIRST_COLUMN) cannon_pos_x <= cannon_pos_x - 1;
 		cannon_action_delay <= CANNON_ACTION_MAX_DELAY;
 	    end
 	    CANNON_MOVE_RIGHT: begin
-		if(cannon_pos_x > FIRST_COLUMN) cannon_pos_x <= cannon_pos_x - 1;
+		if(cannon_pos_x < LAST_COLUMN - 15) cannon_pos_x <= cannon_pos_x + 1;
 		cannon_action_delay <= CANNON_ACTION_MAX_DELAY;
 	    end
 	    CANNON_SHOT: begin
-		//TODO
+		if(!is_cannon_bullet) begin
+		    is_cannon_bullet <= 1;
+		    cannon_bullet_x <= cannon_pos_x + 7;
+		    cannon_bullet_y <= CANNON_POS_Y + 4;
+		end
+		cannon_action_delay <= CANNON_ACTION_MAX_DELAY;
 	    end
 	  endcase // case (cannon_action)
-	end else cannon_action_delay <= cannon_action_delay - 1;
-    end
+	end else cannon_action_delay <= cannon_action_delay - 1; // if (cannon_action_delay == 0)
+    end // always @ (posedge clk)
     
 endmodule // game
 
