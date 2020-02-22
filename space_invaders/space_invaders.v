@@ -538,7 +538,7 @@ module game(
 				 .check_killed(check_killed),
 				 .kill_invader(kill_invader),
 				 .do_kill_invader(do_kill_invader),
-				 .reset_kill(reset_kill),
+				 .reset_killed(reset_kill),
 				 .is_killed(is_killed),
 				 .shot_id(shot_id),
 				 .shot_x(shot_x),
@@ -586,31 +586,8 @@ module game(
     
     always @(posedge clk) begin
 
-	//Default state is 0, if want to save have to set up every time
 	do_save_shot <= 0;
 	case (state)
-/*	  STATE_INIT : begin
-	      if(cur_invader < 55) begin
-		  if(sprite_x + 16 >= FIRST_COLUMN + 16*11) begin
-		      sprite_x <= FIRST_COLUMN;
-		      sprite_y <= sprite_y + 16;
-		      invaders_x[cur_invader] <= FIRST_COLUMN;
-		      invaders_y[cur_invader] <= sprite_y + 16;
-		      if(cur_invader >= 33) cur_sprite <= SPRITE_BIG_ALIEN;
-		      else if(cur_invader >= 11) cur_sprite <= SPRITE_MID_ALIEN;
-		  end else begin
-		      sprite_x <= sprite_x + 16;
-		      invaders_x[cur_invader] <= sprite_x + 16;
-		      invaders_y[cur_invader] <= sprite_y;
-		  end
-		  cur_invader <= cur_invader + 1;
-		  state <= STATE_DRAW_SPRITE;
-	      end else begin // if (cur_invader < 55)
-		  cur_invader <= 0;
-		  init_finished <= 0;
-		  state <= STATE_WAIT;
-	      end
-	  end // case: STATE_INIT*/
 	  STATE_WAIT: begin
 	      check_killed <= rand_to_pos_x + rand_to_pos_y * 11;
 	      random_pos_x <= rand_to_pos_x;
@@ -675,7 +652,7 @@ module game(
 			  kill_debug_reg <= 0;
 		      end
 		  end else begin
-		      if(random_bits[2:0] == 0 && !is_killed) begin
+		      if(random_bits[5:0] == 0 && !is_killed) begin
 			  save_shot_x <= first_invader_x + (random_pos_x1 << 4) + 6;
 			  save_shot_y <= first_invader_y + (random_pos_y1 << 4) + 12;
 			  do_save_shot <= 1;
@@ -752,28 +729,6 @@ module game(
 		  shot_next_pixels <= 0;
 	      end
 	  end // case: STATE_WRITE_LINE
-/*	  STATE_REDRAW: begin
-	      if(cur_invader < 55) begin
-		  if(!killed_invaders[cur_invader]) begin
-		      sprite_x <= invaders_x[cur_invader];
-		      sprite_y <= invaders_y[cur_invader];
-		      if(cur_invader >= 33) cur_sprite <= SPRITE_BIG_ALIEN;
-		      else if(cur_invader >= 11) cur_sprite <= SPRITE_MID_ALIEN;
-		      else cur_sprite <= SPRITE_SMALL_ALIEN;
-		      state <= STATE_DRAW_SPRITE;
-		  end
-		  cur_invader <= cur_invader + 1;
-	      end else begin
-		  cur_invader <= 0;
-		  if(nxt_move == 0) begin
-		      nxt_move <= MAX_MOVE_DELAY - speed;
-		      state <= STATE_MOVE_ALIENS;
-		  end else begin
-		      nxt_move <= nxt_move - 1;
-		      state <= STATE_WAIT;
-		  end
-	      end // else: !if(cur_invader < 55)
-	  end // case: STATE_REDRAW*/
 	  STATE_CHECK_COLLISIONS: begin
 	      //Need 2 cycles to get result from ram
 	      if(cur_invader == 56) begin
@@ -793,8 +748,6 @@ module game(
 			  if(cur_invader_x <= FIRST_COLUMN 
 			     || cur_invader_x >= LAST_COLUMN - 16) begin
 			      updated_direction <= 1;
-			      //cur_invader <= 0;
-			      //state <= STATE_TEST_SIMULATION;
 			      if(moving_direction == DIRECTION_DOWN)
 				if(cur_invader_x <= FIRST_COLUMN)
 				  moving_direction <= DIRECTION_RIGHT;
@@ -845,8 +798,6 @@ module game(
 	      end else begin // if (cur_invader < 55)
 		  cur_invader <= 56;
 		  check_killed <= 0;
-		  //check_killed <= next_kill;
-		  //state <= STATE_TEST_SIMULATION;
 		  write_x <= 0;
 		  shot_id <= 0;
 		  shot_id1 <= 0;
@@ -855,24 +806,20 @@ module game(
 	  end
 	  STATE_GAME_OVER: begin
 	  end
-/*	  STATE_TEST_SIMULATION: begin
-//	      write_x <= 0;
-//	      state <= STATE_WRITE_LINE;
-	      if(next_kill + 7 >= 55) next_kill <= next_kill - 48;
-	      else next_kill <= next_kill + 7;
-	      if(!is_killed) begin
-		  kill_invader <= next_kill;
-		  do_kill_invader <= 1;
-		  speed <= speed + 1;
-	      end else do_kill_invader <= 0;
-	      if(speed == 54 && !is_killed) state <= STATE_GAME_OVER;
-	      else begin
-		  check_killed <= 0;
-		  //state <= STATE_WAIT;
-		  write_x <= 0;
-		  state <= STATE_WRITE_LINE;
+	  STATE_RESET_GAME: begin
+	      if(kill_invader < 54) begin
+		  kill_invader <= kill_invader + 1;
+	      end else if(save_shot_id < 3) begin
+		  save_shot_id <= save_shot_id + 1;
+		  do_save_shot <= 1;
+	      end else begin
+		  state <= STATE_WAIT;
+		  do_kill_invader <= 0;
+		  kill_invader <= 1;
+		  save_shot_id <= 0;
+		  delete_shot <= 0;
 	      end
-	  end*/
+	  end
 	endcase // case (state)
 
 	if(cannon_action_delay == 0) begin
@@ -893,13 +840,19 @@ module game(
 	end else cannon_action_delay <= cannon_action_delay - 1; // if (cannon_action_delay == 0)
 
 	if(reset_game) begin
-	    state <= STATE_WAIT;
-	    first_invader_x = FIRST_COLUMN;
-	    first_invader_y = FIRST_ROW; 
-	    speed = 0;
-	    alien_move_cnt = MAX_MOVE_DELAY;
-	    cur_invader = 56;
-	    moving_direction = DIRECTION_RIGHT;
+	    state <= STATE_RESET_GAME;
+	    first_invader_x <= FIRST_COLUMN;
+	    first_invader_y <= FIRST_ROW; 
+	    speed <= 0;
+	    alien_move_cnt <= MAX_MOVE_DELAY;
+	    cur_invader <= 56;
+	    moving_direction <= DIRECTION_RIGHT;
+	    kill_invader <= 0;
+	    do_kill_invader <= 1;
+	    save_shot_id <= 0;
+	    do_save_shot <= 1;
+	    delete_shot <= 1;
+	    cannon_pos_x <= FIRST_COLUMN;
 	end
     	    
     end // always @ (posedge clk)
@@ -957,6 +910,7 @@ module space_invaders (
     reg        is_a = 0;
     reg        is_d = 0;
     reg        different_key;
+    reg        long_char = 0;
 
     reg [7:0]  last_key_dbg;
     
@@ -969,7 +923,7 @@ module space_invaders (
 	else if((btn2[1] || btn2[2]) && !(btn3[1] || btn3[2])) cannon_action <= CANNON_SHOT;
 	else cannon_action <= CANNON_NO_ACTION;
 
-	if(btn3[0] && btn3[1]) reset_game <= 1;
+	if(btn3[0] && btn3[3]) reset_game <= 1;
 	else reset_game <= 0;
 	
 	key_clk <= PS2C;
@@ -989,16 +943,27 @@ module space_invaders (
 		    different_key <= 0;
 		    last_key_dbg <= key[8:1];
 		    case (key[8:1])
-		      8'h29://8'h39: //SPACE
-			cannon_action <= CANNON_SHOT;
-		      8'h1B://8'h1E: //A press
-			is_a <= 1;
-		      8'hFB://8'h9E: //A rel
-			is_a <= 0;
-		      8'h23://8'h20: //D press
-			is_d <= 1;
-		      8'hF3://8'hA0: //D rel
-			is_d <= 0;
+		      8'h29: begin//8'h39: //SPACE
+			  cannon_action <= CANNON_SHOT;
+			  long_char <= 0;
+		      end
+		      8'h1C: begin //8'h1E: //A press
+			  if(long_char)
+			    is_a <= 0;
+			  else
+			    is_a <= 1;
+			  long_char <= 0;
+		      end
+		      8'h23: begin//8'h20: //D press
+			  if(long_char)
+			    is_d <= 0;
+			  else
+			    is_d <= 1;
+			  long_char <= 0;
+		      end
+		      8'hF0: begin
+			  long_char <= 1;
+		      end
 		      default:
 			different_key <= 1;
 		    endcase // case (key[8:1])
