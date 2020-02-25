@@ -331,10 +331,10 @@ module game_memory(input wire clk,
 		   input wire [8:0]   save_shot_x,
 		   input wire [7:0]   save_shot_y,
 		   input wire [1:0]   get_bunker_id,
-		   output wire [24:0] bunker,
+		   output wire [27:0] bunker,
 		   input wire [1:0]   set_bunker_id,
 		   input wire 	      do_save_bunker,
-		   input wire [24:0]  set_bunker 
+		   input wire [27:0]  set_bunker 
 		   );
 
     reg [54:0] killed_invaders;
@@ -348,13 +348,13 @@ module game_memory(input wire clk,
     wire [8:0] save_x;
     wire [8:0] save_y;
 
-    reg [24:0] bunkers [3:0];
-    reg [24:0] bunker_read;
+    reg [27:0] bunkers [3:0];
+    reg [27:0] bunker_read;
 
     integer    i;
     initial begin
 	for(i=0;i<4;i=i+1)
-	  bunkers[i] = 12;
+	  bunkers[i] = (1 << 23) + (1 << 24) + (1 << 25);
     end
 
     assign is_killed = kill_read_res;
@@ -374,7 +374,7 @@ module game_memory(input wire clk,
 	    shots[save_shot_id] <= {~delete_shot, save_shot_y, save_shot_x};
 	end
 	
-	bunker_read <= bunker[get_bunker_id];
+	bunker_read <= bunkers[get_bunker_id];
 	if(do_save_bunker) begin
 	    bunkers[set_bunker_id] <= set_bunker;
 	end
@@ -397,16 +397,23 @@ module game(
 	    output wire      kill_debug,
 	    output wire      is_shot_debug,
 	    output wire      saved_shot_debug,
-	    output wire      sprite_pixel_debug
+	    output wire      sprite_pixel_debug,
+	    output wire      bunker_debug,
+	    output wire      updated_dir_debug,
+	    output wire      is_looped_debug
 	    );
 
     reg 		     kill_debug_reg = 0;
     reg 		     was_saved_shot_debug;
     reg 		     was_shot_debug;
+    reg 		     is_looped = 1;
+    assign bunker_debug = bunker[25];
     assign kill_debug = kill_debug_reg;
     assign is_shot_debug = was_shot_debug;
     assign saved_shot_debug = was_saved_shot_debug;
     assign sprite_pixel_debug = sprite_pixel;
+    assign updated_dir_debug = updated_direction;
+    assign is_looped_debug = is_looped;
     always @(posedge clk) begin
 	if(is_shot && shot_id1 != CANNON_SHOT_ID) was_shot_debug <= 1;
 	if(do_save_shot && !delete_shot && save_shot_id != CANNON_SHOT_ID) was_saved_shot_debug <= 1;
@@ -443,8 +450,10 @@ module game(
 
     localparam CANNON_POS_Y = LAST_ROW + 1;
     localparam BUNKER_POS_Y = 160;
-    localparam BUNKER_WIDTH = 24;
-    localparam BUNKER_HEIGHT = 12;
+    localparam BUNKER_WIDTH = 28;
+    localparam BUNKER_HEIGHT = 16;
+    localparam FIRST_BUNKER = 52;
+    localparam LAST_BUNKER = 320 - 52;
     
     reg [2:0]  state = STATE_WAIT;
 
@@ -460,7 +469,7 @@ module game(
     reg [1:0]  moving_direction = DIRECTION_RIGHT;
     reg        updated_direction;
     
-    reg [8:0]  cannon_pos_x;
+    reg [8:0]  cannon_pos_x = 150;
 
     localparam CANNON_SHOT_ID = 3;
     reg [1:0]  shot_id = 0;
@@ -499,16 +508,16 @@ module game(
     wire       reset_kill;
     assign reset_kill = state == STATE_RESET_GAME;
 
-    reg [1:0]   get_bunker_id;
-    wire [23:0] bunker;
-    reg [1:0] 	set_bunker_id;
+    reg [2:0]   get_bunker_id;
+    wire [27:0] bunker;
+    reg [2:0] 	set_bunker_id;
     reg 	do_save_bunker = 0;
-    reg [23:0] 	set_bunker;
+    reg [27:0] 	set_bunker;
 
     reg [1:0] 	bunker_col_state;
 
     reg [3:0]	cur_bunker_no = 0;
-    reg [4:0] 	cur_bunker_x = 0;
+    reg [8:0] 	cur_bunker_x = 0;
     reg [3:0] 	cur_bunker_y;
 
     wire [6:0] random_bits;
@@ -608,8 +617,10 @@ module game(
 
     wire [4:0] 	shot_top_to_bunker_pos;
     wire [4:0] 	shot_bot_to_bunker_pos;
-    assign shot_top_to_bunker_pos = ((shot_x - cur_bunker_x) >> 2) + ((shot_y - BUNKER_POS_Y) >> 2) * 6;
-    assign shot_bot_to_bunker_pos = ((shot_x - cur_bunker_x) >> 2) + ((shot_y + 4 - BUNKER_POS_Y) >> 2) * 6;
+    assign shot_top_to_bunker_pos = ((shot_x - cur_bunker_x) >> 2) + 
+				    ((shot_y - BUNKER_POS_Y) >> 2) * 7;
+    assign shot_bot_to_bunker_pos = ((shot_x - cur_bunker_x) >> 2) + 
+				    ((shot_y + 4 - BUNKER_POS_Y) >> 2) * 7;
 
     always @(posedge clk) begin
 
@@ -643,6 +654,7 @@ module game(
 	      end
 	      if(next_line) begin
 		  write_x <= 0;
+		  get_bunker_id <= 0;
 		  //write_y <= write_y + 1;
 		  state <= STATE_WRITE_LINE;
 		  // There wont be any invider with x=0 so don't have to query memory here
@@ -690,7 +702,7 @@ module game(
 		  shot_id1 <= shot_id1 + 1;
 		  shot_id <= shot_id + 1;
 		  save_shot_id <= shot_id1;
-	      end else begin
+	      end else begin // if (shot_id1 <= 3)
 		  shot_id <= 0;		  
 		  shot_id1 <= 0;
 		  state <= STATE_CHECK_COLLISIONS;
@@ -734,26 +746,35 @@ module game(
 		      sprite_x <= write_x - cannon_pos_x;
 		      sprite_y <= write_y - CANNON_POS_Y;
 		      is_sprite <= 1;
-		  end else if(shot_next_pixels[0])
+		  end
+
+		  //Shots & bunkers
+		  if(shot_next_pixels[0])
 		    is_pixel <= 1;
 		  else if(write_y >= BUNKER_POS_Y && write_y < BUNKER_POS_Y + BUNKER_HEIGHT
-			  && cur_bunker_no[0] 
-			  && !bunker[(cur_bunker_x >> 2) + ((write_y - BUNKER_POS_Y) >> 2) * 6])
+			  && write_x >= FIRST_BUNKER && write_x < LAST_BUNKER && cur_bunker_no[0] 
+			  && !bunker[(cur_bunker_x >> 2) + ((write_y - BUNKER_POS_Y) >> 2) * 7])
 		    is_pixel <= 1;
 		  else is_pixel <= 0;
+		  
 		  write_x <= write_x + 1;
 		  if(is_shot && shot_x > write_x && shot_x <= write_x + 7
 		     && write_y >= shot_y && write_y < shot_y + 4) begin
 		      shot_next_pixels <= (shot_next_pixels >> 1) | (1 << (shot_x - write_x - 1));
 		  end else shot_next_pixels <= shot_next_pixels >> 1;
-		  
-		  if(cur_bunker_x < BUNKER_WIDTH) begin
-		      cur_bunker_x <= cur_bunker_x + 1;
-		      if(cur_bunker_x == BUNKER_WIDTH - 2)
-			get_bunker_id <= (cur_bunker_no + 1) >> 1;
-		  end else begin
+
+		  if(write_x == FIRST_BUNKER - 1) begin
+		      cur_bunker_no <= 1;
 		      cur_bunker_x <= 0;
-		      cur_bunker_no <= cur_bunker_no + 1;
+		  end else if(write_x >= FIRST_BUNKER) begin
+		      if(cur_bunker_x < BUNKER_WIDTH - 1) begin
+			  cur_bunker_x <= cur_bunker_x + 1;
+			  if(cur_bunker_x == BUNKER_WIDTH - 2)
+			    get_bunker_id <= (cur_bunker_no + 1) >> 1;
+		      end else begin
+			  cur_bunker_x <= 0;
+			  cur_bunker_no <= cur_bunker_no + 1;
+		      end
 		  end
 		      
 		  is_pixel1 <= is_pixel;
@@ -850,23 +871,33 @@ module game(
 	  STATE_BUNKER_COLISIONS: begin
 	      if(shot_id == 0 && shot_id1 == 0) begin
 		  shot_id <= 1;
-		  cur_bunker_x <= BUNKER_WIDTH;
+		  cur_bunker_x <= FIRST_BUNKER;
+		  cur_bunker_no <= 0;
+	      end else if(cur_bunker_no >= 4) begin
+		  shot_id <= 0;
+		  shot_id1 <= 0;
+		  get_bunker_id <= 0;
+		  do_save_bunker <= 0;
+		  state <= STATE_WRITE_LINE;
+		  
+		  is_looped <= 0;
 	      end else if(shot_id1 <= 3) begin
 		  if(is_shot && shot_y + 4 >= BUNKER_POS_Y && shot_y < BUNKER_POS_Y + BUNKER_HEIGHT
 		     && shot_x >= cur_bunker_x && shot_x < cur_bunker_x + BUNKER_WIDTH) begin
 		      if(shot_y >= BUNKER_POS_Y && !bunker[shot_top_to_bunker_pos]) begin
-			  save_shot_id <= shot_id;
+			  save_shot_id <= shot_id1;
 			  do_save_shot <= 1;
 			  delete_shot <= 1;
 			  do_save_bunker <= 1;
-			  set_bunker_id <= get_bunker_id;
+			  set_bunker_id <= cur_bunker_no;
 			  set_bunker <= bunker | (1 << shot_top_to_bunker_pos);
-		      end else if(!bunker[shot_bot_to_bunker_pos]) begin
-			  save_shot_id <= shot_id;
+		      end else if(shot_y + 4 < BUNKER_POS_Y + BUNKER_HEIGHT 
+				  && !bunker[shot_bot_to_bunker_pos]) begin
+			  save_shot_id <= shot_id1;
 			  do_save_shot <= 1;
 			  delete_shot <= 1;
 			  do_save_bunker <= 1;
-			  set_bunker_id <= get_bunker_id;
+			  set_bunker_id <= cur_bunker_no;
 			  set_bunker <= bunker | (1 << shot_bot_to_bunker_pos);
 		      end else begin 
 			  do_save_bunker <= 0;
@@ -874,20 +905,15 @@ module game(
 		  end // if (is_shot && shot_y + 4 >= BUNKER_POS_Y...
 		  shot_id <= shot_id + 1;
 		  shot_id1 <= shot_id1 + 1;
-		  if(shot_id1 == 3) get_bunker_id <= get_bunker_id + 1;
-	      end else if(get_bunker_id < 4) begin
-		  shot_id <= 1;
-		  shot_id1 <= 0;
-		  do_save_bunker <= 0;
-		  cur_bunker_x <= cur_bunker_x + 2*BUNKER_WIDTH;
-	      end else begin
-		  shot_id <= 0;
-		  shot_id1 <= 0;
-		  get_bunker_id <= 0;
-		  do_save_bunker <= 0;
-		  state <= STATE_WRITE_LINE;
-	      end
-	  end
+		  if(shot_id1 == 2) begin
+		      get_bunker_id <= get_bunker_id + 1;
+		  end else if(shot_id1 == 3) begin
+		      cur_bunker_no <= cur_bunker_no + 1;
+		      shot_id1 <= 0;
+		      cur_bunker_x <= cur_bunker_x + (BUNKER_WIDTH << 1);
+		  end
+	      end // if (shot_id1 <= 3)
+	  end // case: STATE_BUNKER_COLISIONS
 	  STATE_GAME_OVER: begin
 	  end
 	  STATE_RESET_GAME: begin
@@ -917,7 +943,7 @@ module game(
 		cannon_action_delay <= CANNON_ACTION_MAX_DELAY;
 	    end
 	    CANNON_MOVE_RIGHT: begin
-		if(cannon_pos_x < LAST_COLUMN - 15) cannon_pos_x <= cannon_pos_x + 1;
+		if(cannon_pos_x < LAST_COLUMN - 20) cannon_pos_x <= cannon_pos_x + 1;
 		cannon_action_delay <= CANNON_ACTION_MAX_DELAY;
 	    end
 	    CANNON_SHOT: begin
@@ -935,15 +961,17 @@ module game(
 	    alien_move_cnt <= MAX_MOVE_DELAY;
 	    cur_invader <= 56;
 	    moving_direction <= DIRECTION_RIGHT;
+	    updated_direction <= 1;
+
 	    kill_invader <= 0;
 	    do_kill_invader <= 1;
 	    save_shot_id <= 0;
 	    do_save_shot <= 1;
 	    delete_shot <= 1;
-	    cannon_pos_x <= FIRST_COLUMN;
+	    cannon_pos_x <= 150;
 	    do_save_bunker <= 1;
 	    set_bunker_id <= 0;
-	    set_bunker <= 12; //Initial bunker state
+	    set_bunker <=  (1 << 23) + (1 << 24) + (1 << 25); //Initial bunker state
 	end
     	    
     end // always @ (posedge clk)
@@ -1014,7 +1042,7 @@ module space_invaders (
 	else if((btn2[1] || btn2[2]) && !(btn3[1] || btn3[2])) cannon_action <= CANNON_SHOT;
 	else cannon_action <= CANNON_NO_ACTION;
 
-	if(btn3[0] && btn3[3]) reset_game <= 1;
+	if(btn3[0] && btn3[1] && btn3[3]) reset_game <= 1;
 	else reset_game <= 0;
 	
 	key_clk <= PS2C;
@@ -1112,13 +1140,16 @@ module space_invaders (
 		   .read_x(read_h >> 1),
 		   .read_y(read_v >> 1),
 		   .pixel(read_res),
-		   .reset_game(reset_game)
+		   .reset_game(reset_game),
 
-//		   .is_game_over(led[0]),
-//		   .kill_debug(led[7]),
-//		   .is_shot_debug(led[6]),
-//		   .saved_shot_debug(led[5]),
-//		   .sprite_pixel_debug(led[1])
+		   .is_game_over(led[0]),
+		   .kill_debug(led[7]),
+		   .is_shot_debug(led[6]),
+		   .saved_shot_debug(led[5]),
+		   .sprite_pixel_debug(led[1]),
+		   .bunker_debug(led[2]),
+		   .updated_dir_debug(led[3]),
+		   .is_looped_debug(led[4])
 		   );
 
 //    assign led[0] = VGAR[2];
@@ -1133,6 +1164,6 @@ module space_invaders (
 //    assign led[6] = next_frame;
 //    assign led[7] = save_pixel;
 
-    assign led = last_key_dbg;
+//    assign led = last_key_dbg;
     
 endmodule // space_invaders
