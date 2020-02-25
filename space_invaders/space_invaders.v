@@ -85,160 +85,27 @@ module display_vga (
 
 endmodule // display_vga
 
-/*module blockram(
-		input wire 	 clk,
-		input wire 	 do_read,
-		input wire [8:0] read_x,
-		input wire [7:0] read_y,
-		output wire 	 read_res,
-		input wire 	 do_write,
-		input wire [8:0] write_x,
-		input wire [7:0] write_y,
-		input wire 	 write
-		);
-    
-    localparam BR_SIZE = 1024*16 - 1;
-    
-//    reg ram1 [BR_SIZE:0];
-//    reg ram2 [BR_SIZE:0];
-//    reg ram3 [BR_SIZE:0];
-//    reg ram4 [BR_SIZE:0];
-
-//    reg write_bit;
-//    reg [0:0] read_bit;
-  
-    wire [3:0] read_bits;
-
-    wire [13:0] read_addr;
-    wire [13:0] write_addr;
-    wire [3:0] 	read_ram;
-    wire [3:0] 	write_ram;
-
-    assign read_addr = (read_x + read_y * 320) >> 2;
-    assign read_ram[0] = read_x[1:0] == 0 && do_read;
-    assign read_ram[1] = read_x[1:0] == 1 && do_read;
-    assign read_ram[2] = read_x[1:0] == 2 && do_read;
-    assign read_ram[3] = read_x[1:0] == 3 && do_read;
-    assign write_addr = (write_x + write_y * 320) >> 2;
-    assign write_ram[0] = write_x[1:0] == 0 && do_write;
-    assign write_ram[1] = write_x[1:0] == 1 && do_write;
-    assign write_ram[2] = write_x[1:0] == 2 && do_write;
-    assign write_ram[3] = write_x[1:0] == 3 && do_write;
-    assign read_res = read_ram[0] ? read_bits[0] : (read_ram[1] ? read_bits[1] : 
-						    (read_ram[2] ? read_bits[2] : read_bits[3]));
-*/
-/*    always @(posedge clk) begin
-	case (read_ram)
-	  0 : read_bit <= ram1[read_addr];
-	  1 : read_bit <= ram2[read_addr];
-	  2 : read_bit <= ram3[read_addr];
-	  3 : read_bit <= ram4[read_addr];
-	endcase // case (read_ram)
-	read_res <= read_bit;
-    end
-
-    always @(posedge clk) begin
-	write_bit <= write; //TODO
-	case (write_ram)
-	  0: ram1[write_addr] <= write_bit;
-	  1: ram2[write_addr] <= write_bit;
-	  2: ram3[write_addr] <= write_bit;
-	  3: ram4[write_addr] <= write_bit;
-	endcase // case (write_ram)
-    end // always @ (posedge clk)
-*/
-
-//    assign read_res = read_bit;
-/*
-    RAMB16_S1_S1 RAMB16_S1_S1_inst1(.DOA(read_bits[0]),//PortA1-bitDataOutput
-				    //.DOB(DOB),//PortB1-bitDataOutput
-				    .ADDRA(read_addr),//PortA14-bitAddressInput
-				    .ADDRB(write_addr),//PortB14-bitAddressInput
-				    .CLKA(clk),//PortAClock
-				    .CLKB(clk),//PortBClock
-				    //.DIA(DIA),//PortA1-bitDataInput
-				    .DIB(write),//PortB1-bitDataInput
-				    .ENA(read_ram[0]),//PortARAMEnableInput
-				    .ENB(write_ram[0]),//PortBRAMEnableInput
-				    .SSRA(0),//PortASynchronousSet/ResetInput
-				    .SSRB(0),//PortBSynchronousSet/ResetInput
-				    .WEA(0),//PortAWriteEnableInput
-				    .WEB(write_ram[0])//PortBWriteEnableInput
-				    );
-
-    
-    RAMB16_S1_S1 RAMB16_S1_S1_inst2(.DOA(read_bits[1]),//PortA1-bitDataOutput
-				    //.DOB(DOB),//PortB1-bitDataOutput
-				    .ADDRA(read_addr),//PortA14-bitAddressInput
-				    .ADDRB(write_addr),//PortB14-bitAddressInput
-				    .CLKA(clk),//PortAClock
-				    .CLKB(clk),//PortBClock
-				    //.DIA(DIA),//PortA1-bitDataInput
-				    .DIB(write),//PortB1-bitDataInput
-				    .ENA(read_ram[1]),//PortARAMEnableInput
-				    .ENB(write_ram[1]),//PortBRAMEnableInput
-				    .SSRA(0),//PortASynchronousSet/ResetInput
-				    .SSRB(0),//PortBSynchronousSet/ResetInput
-				    .WEA(0),//PortAWriteEnableInput
-				    .WEB(write_ram[1])//PortBWriteEnableInput
-				    );
-
-    
-    RAMB16_S1_S1 RAMB16_S1_S1_inst3(.DOA(read_bits[2]),//PortA1-bitDataOutput
-				    //.DOB(DOB),//PortB1-bitDataOutput
-				    .ADDRA(read_addr),//PortA14-bitAddressInput
-				    .ADDRB(write_addr),//PortB14-bitAddressInput
-				    .CLKA(clk),//PortAClock
-				    .CLKB(clk),//PortBClock
-				    //.DIA(DIA),//PortA1-bitDataInput
-				    .DIB(write),//PortB1-bitDataInput
-				    .ENA(read_ram[2]),//PortARAMEnableInput
-				    .ENB(write_ram[2]),//PortBRAMEnableInput
-				    .SSRA(0),//PortASynchronousSet/ResetInput
-				    .SSRB(0),//PortBSynchronousSet/ResetInput
-				    .WEA(0),//PortAWriteEnableInput
-				    .WEB(write_ram[2])//PortBWriteEnableInput
-				    );
-
-    
-    RAMB16_S1_S1 RAMB16_S1_S1_inst4(.DOA(read_bits[3]),//PortA1-bitDataOutput
-				    //.DOB(DOB),//PortB1-bitDataOutput
-				    .ADDRA(read_addr),//PortA14-bitAddressInput
-				    .ADDRB(write_addr),//PortB14-bitAddressInput
-				    .CLKA(clk),//PortAClock
-				    .CLKB(clk),//PortBClock
-				    //.DIA(DIA),//PortA1-bitDataInput
-				    .DIB(write),//PortB1-bitDataInput
-				    .ENA(read_ram[3]),//PortARAMEnableInput
-				    .ENB(write_ram[3]),//PortBRAMEnableInput
-				    .SSRA(0),//PortASynchronousSet/ResetInput
-				    .SSRB(0),//PortBSynchronousSet/ResetInput
-				    .WEA(0),//PortAWriteEnableInput
-				    .WEB(write_ram[3])//PortBWriteEnableInput
-				    );
-
-endmodule // blockram
-*/
-
 module sprites(
 	       input wire 	clk,
-	       input wire [2:0] sprite,
-	       input wire [3:0] sprite_x,
-	       input wire [2:0] sprite_y,
+	       input wire [3:0] sprite,
+	       input wire [6:0] sprite_x,
+	       input wire [3:0] sprite_y,
+	       input wire 	do_read,
 	       output wire 	pixel
 	       );
 
-    reg [3:0] sprites [0:980];
-    reg [5:0] sprite_start_x;
-    reg [4:0] sprite_start_y;
-    wire [9:0] read_id;
+    reg [3:0] sprites [0:4095];
+    reg [11:0] sprite_start_x;
+    reg [11:0] sprite_start_y;
+    wire [11:0] read_id;
     reg [3:0]  read_out;
 
     assign pixel = read_out[3];
     
     initial begin
-//	$readmemh("resources/sprites.hex", sprites);
-	$readmemh("sprites.hex", sprites);
+	$readmemh("sprites.hex", sprites, 0, 979);
+	$readmemh("you_lost.hex", sprites, 1024, 2023);
+	$readmemh("you_won.hex", sprites, 2048, 3047);
     end
 
     always @* begin
@@ -275,13 +142,26 @@ module sprites(
 	      sprite_start_x = 17;
 	      sprite_start_y = 19;
 	  end
+	  8: begin
+	      sprite_start_x = 1024;
+	      sprite_start_y = 0;
+	  end
+	  9: begin
+	      sprite_start_x = 2048;
+	      sprite_start_y = 0;
+	  end
+	  default: begin
+	      sprite_start_x = 0;
+	      sprite_start_y = 0;
+	  end
 	endcase // case (sprite)
     end
 
-    assign read_id = sprite_start_x + sprite_x + (sprite_start_y + sprite_y) * 35;
+    assign read_id = sprite < 8 ? sprite_start_x + sprite_x + (sprite_start_y + sprite_y) * 35
+		      : sprite_start_x + sprite_x + sprite_y * 100;
 
     always @(posedge clk) begin
-	read_out <= sprites[read_id];
+	if(do_read) read_out <= sprites[read_id];
     end
     
 endmodule // sprites
@@ -387,45 +267,17 @@ module game(
 	    input wire 	     next_move,
 	    input wire 	     next_line,
 	    input wire [1:0] cannon_action,
-//	    input wire 	     do_write,
 	    input wire [8:0] read_x,
 	    input wire [7:0] read_y,
 	    output wire      pixel,
-	    input wire 	     reset_game,
-
-	    output wire      is_game_over,
-	    output wire      kill_debug,
-	    output wire      is_shot_debug,
-	    output wire      saved_shot_debug,
-	    output wire      sprite_pixel_debug,
-	    output wire      bunker_debug,
-	    output wire      updated_dir_debug,
-	    output wire      is_looped_debug
+	    input wire 	     reset_game
 	    );
 
-    reg 		     kill_debug_reg = 0;
-    reg 		     was_saved_shot_debug;
-    reg 		     was_shot_debug;
-    reg 		     is_looped = 1;
-    assign bunker_debug = bunker[25];
-    assign kill_debug = kill_debug_reg;
-    assign is_shot_debug = was_shot_debug;
-    assign saved_shot_debug = was_saved_shot_debug;
-    assign sprite_pixel_debug = sprite_pixel;
-    assign updated_dir_debug = updated_direction;
-    assign is_looped_debug = is_looped;
-    always @(posedge clk) begin
-	if(is_shot && shot_id1 != CANNON_SHOT_ID) was_shot_debug <= 1;
-	if(do_save_shot && !delete_shot && save_shot_id != CANNON_SHOT_ID) was_saved_shot_debug <= 1;
-    end
-
-    assign is_game_over = state == STATE_GAME_OVER;
-    
-    localparam MAX_MOVE_DELAY = 23;
+    localparam MAX_MOVE_DELAY = 28;
     localparam FIRST_COLUMN = 4;
-    localparam FIRST_ROW = 20;
-    localparam LAST_COLUMN = 320;
-    localparam LAST_ROW = 180;
+    localparam FIRST_ROW = 4;
+    localparam LAST_COLUMN = 316;
+    localparam LAST_ROW = 160;
     
     localparam STATE_WAIT = 0;
     localparam STATE_WRITE_LINE = 1;
@@ -434,6 +286,7 @@ module game(
     localparam STATE_MOVE_SHOTS = 4;
     localparam STATE_RESET_GAME = 5;
     localparam STATE_BUNKER_COLISIONS = 6;
+    localparam STATE_WON = 7;
 
     localparam SPRITE_BIG_ALIEN = 0;
     localparam SPRITE_MID_ALIEN = 1;
@@ -448,7 +301,7 @@ module game(
     localparam CANNON_MOVE_RIGHT = 2;
     localparam CANNON_SHOT = 3;
 
-    localparam CANNON_POS_Y = LAST_ROW + 1;
+    localparam CANNON_POS_Y = 180;
     localparam BUNKER_POS_Y = 160;
     localparam BUNKER_WIDTH = 28;
     localparam BUNKER_HEIGHT = 16;
@@ -457,19 +310,19 @@ module game(
     
     reg [2:0]  state = STATE_WAIT;
 
-    reg [8:0]  first_invader_x = FIRST_COLUMN;
+    reg signed [10:0]  first_invader_x = FIRST_COLUMN;
     reg [7:0]  first_invader_y = FIRST_ROW; 
     reg [5:0]  speed = 0;
     
     reg [5:0]  alien_move_cnt = MAX_MOVE_DELAY;
     reg [5:0]  cur_invader = 56;
-    reg [8:0]  cur_invader_x;    
+    reg signed [10:0]  cur_invader_x;    
     reg [7:0]  cur_invader_y;
 
     reg [1:0]  moving_direction = DIRECTION_RIGHT;
     reg        updated_direction;
     
-    reg [8:0]  cannon_pos_x = 150;
+    reg signed [10:0]  cannon_pos_x = 150;
 
     localparam CANNON_SHOT_ID = 3;
     reg [1:0]  shot_id = 0;
@@ -545,10 +398,12 @@ module game(
     localparam SPRITE_MED = 2;
     localparam SPRITE_CANNON = 6;
     localparam SPRITE_UFO = 7;
+    localparam SPRITE_LOST = 8;
+    localparam SPRITE_WON = 9;
 
-    reg [2:0]  sprite_type;
-    reg [3:0]  sprite_x;
-    reg [2:0]  sprite_y;
+    reg [3:0]  sprite_type;
+    reg [6:0]  sprite_x;
+    reg [3:0]  sprite_y;
     wire       sprite_pixel;
     reg        sprite_switch = 0;
 
@@ -557,7 +412,8 @@ module game(
 			 .sprite(sprite_type),
 			 .sprite_x(sprite_x),
 			 .sprite_y(sprite_y),
-	        	 .pixel(sprite_pixel)
+	        	 .pixel(sprite_pixel),
+			 .do_read(1)
 			 );
     
     game_memory game_memory_inst(.clk(clk),
@@ -584,10 +440,11 @@ module game(
 
     reg        save_next = 0;
     reg        save_pixel;
-    reg [8:0]  write_x = 0;
+    reg signed [10:0]  write_x = 0;
     wire [7:0]  write_y;
     assign write_y = read_y + 1;
 
+    wire 	cache_pixel;
     reg 	is_pixel;
     reg 	is_sprite;
     reg 	is_pixel1;
@@ -601,9 +458,10 @@ module game(
 				 .read_x(read_x),
 				 .read_y(read_y[0]),
 				 .read_next(1),
-				 .read_pixel(pixel)
+				 .read_pixel(cache_pixel)
 				 );
 
+    assign pixel = state == STATE_WON || state == STATE_GAME_OVER ? sprite_pixel : cache_pixel;
     
     assign rel_write_x = write_x - first_invader_x;
     assign rel_write_y = write_y - first_invader_y;
@@ -669,7 +527,7 @@ module game(
 	      random_pos_y1 <= random_pos_y;
 	      if(shot_id1 <= 3) begin
 		  if(is_shot) begin
-		      if((shot_y < LAST_ROW + 12 && shot_id1 != CANNON_SHOT_ID) 
+		      if((shot_y < 192 && shot_id1 != CANNON_SHOT_ID) 
 			 || (shot_y > 1 && shot_id1 == CANNON_SHOT_ID)) begin
 			  save_shot_x <= shot_x;
 			  save_shot_y <= shot_y + (shot_id1 != CANNON_SHOT_ID ? 2 : -2);
@@ -684,11 +542,9 @@ module game(
 		      if(cannon_do_shot) begin
 			  save_shot_x <= cannon_pos_x + 7;
 			  save_shot_y <= CANNON_POS_Y + 4;
-			  delete_shot <= 0;
+		 	  delete_shot <= 0;
 			  do_save_shot <= 1;
 			  cannon_do_shot <= 0;
-
-			  kill_debug_reg <= 0;
 		      end
 		  end else begin
 		      if(random_bits[5:0] == 0 && !is_killed) begin
@@ -716,7 +572,7 @@ module game(
 		      shot_next_pixels[shot_x - write_x] <= 1;
 		  end
 		  if(shot_id == 3) shot_id1 <= shot_id1 + 1;
-	      end else if(write_x < 320 + 2) begin
+	      end else if(write_x < 320) begin
 		  //Prefetch
 		  if(write_y >= first_invader_y && write_y < first_invader_y + 16*5
 		     && write_x + 2 >= first_invader_x 
@@ -832,9 +688,7 @@ module game(
 			  speed <= speed + 1;
 			  do_save_shot <= 1;
 			  delete_shot <= 1;
-
-			  kill_debug_reg <= 1;
-			  
+			  if(speed == 54) state <= STATE_WON;
 		      end else begin
 			  do_kill_invader <= 0;
 			  do_save_shot <= 0;
@@ -879,8 +733,6 @@ module game(
 		  get_bunker_id <= 0;
 		  do_save_bunker <= 0;
 		  state <= STATE_WRITE_LINE;
-		  
-		  is_looped <= 0;
 	      end else if(shot_id1 <= 3) begin
 		  if(is_shot && shot_y + 4 >= BUNKER_POS_Y && shot_y < BUNKER_POS_Y + BUNKER_HEIGHT
 		     && shot_x >= cur_bunker_x && shot_x < cur_bunker_x + BUNKER_WIDTH) begin
@@ -915,6 +767,24 @@ module game(
 	      end // if (shot_id1 <= 3)
 	  end // case: STATE_BUNKER_COLISIONS
 	  STATE_GAME_OVER: begin
+	      sprite_type <= SPRITE_LOST;
+	      if(read_x >= 120 && read_x < 220 && read_y >= 90 && read_y < 100) begin
+		  sprite_x <= read_x - 120;
+		  sprite_y <= read_y - 90;
+	      end else begin
+		  sprite_x <= 99;
+		  sprite_y <= 0;
+	      end
+	  end
+	  STATE_WON: begin
+	      sprite_type <= SPRITE_WON;
+	      if(read_x >= 120 && read_x < 220 && read_y >= 90 && read_y < 100) begin
+		  sprite_x <= read_x - 120;
+		  sprite_y <= read_y - 90;
+	      end else begin
+		  sprite_x <= 99;
+		  sprite_y <= 0;
+	      end
 	  end
 	  STATE_RESET_GAME: begin
 	      if(kill_invader < 54) begin
@@ -953,7 +823,8 @@ module game(
 	  endcase // case (cannon_action)
 	end else cannon_action_delay <= cannon_action_delay - 1; // if (cannon_action_delay == 0)
 
-	if(reset_game) begin
+	if(reset_game || ((state == STATE_GAME_OVER || state == STATE_WON) 
+			  && cannon_action == CANNON_SHOT)) begin
 	    state <= STATE_RESET_GAME;
 	    first_invader_x <= FIRST_COLUMN;
 	    first_invader_y <= FIRST_ROW; 
@@ -1140,30 +1011,7 @@ module space_invaders (
 		   .read_x(read_h >> 1),
 		   .read_y(read_v >> 1),
 		   .pixel(read_res),
-		   .reset_game(reset_game),
-
-		   .is_game_over(led[0]),
-		   .kill_debug(led[7]),
-		   .is_shot_debug(led[6]),
-		   .saved_shot_debug(led[5]),
-		   .sprite_pixel_debug(led[1]),
-		   .bunker_debug(led[2]),
-		   .updated_dir_debug(led[3]),
-		   .is_looped_debug(led[4])
+		   .reset_game(reset_game)
 		   );
-
-//    assign led[0] = VGAR[2];
-//    assign led[1] = VGAG[2];
-//    assign led[2] = VGAB[2];
-//    assign led[2] = key_dissynch;
-//    assign led[3] = key_cnt > 0;
-//    assign led[4] = different_key;
-//    assign led[3] = HSYNC;
-//    assign led[4] = VSYNC;
-//    assign led[5] = read_res;
-//    assign led[6] = next_frame;
-//    assign led[7] = save_pixel;
-
-//    assign led = last_key_dbg;
     
 endmodule // space_invaders
